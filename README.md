@@ -326,7 +326,7 @@ or run anything by itself.
 
 If you want to check for yourself:
 
-- The whole thing is 23 text files, about 200kb. Open `Install.bat` and
+- The whole thing is 29 text files, about 370kb. Open `Install.bat` and
   `install_mod.py` in notepad and read them, that's all there is.
 - The installer does download [Godot](https://godotengine.org) and
   [gdRE](https://github.com/GDRETools/gdsdecomp) and run them, because it needs
