@@ -26,7 +26,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 MOD = HERE / "mod"
 
-SUPPORTED_VERSIONS = ["0.5.1", "0.5.2"]
+SUPPORTED_VERSIONS = ["0.5.1", "0.5.2", "0.5.3"]
 GAME_VERSION = " or ".join(SUPPORTED_VERSIONS)
 
 KNOWN_GAME_SIZES = {
@@ -35,6 +35,8 @@ KNOWN_GAME_SIZES = {
     199462432: "0.5.2 dev-2 compatibility build",
     208463056: "0.5.2 compatibility build",
     208462000: "0.5.2 standard build",
+    208741456: "0.5.3 compatibility build",
+    208741312: "0.5.3 standard build",
 }
 
 GODOT_VERSION = "4.4.1-stable"
@@ -52,7 +54,7 @@ TEMPLATE_MEMBER = "templates/windows_release_x86_64.exe"
 EXPORT_PRESET = "Windows Desktop"
 OUTPUT_STEM = "TheChoicerVoicer-Multiplayer"
 
-DISCORD_URL = "https://discord.gg/HYhh6V4NZk"
+KOFI_URL = "https://ko-fi.com/appolodev"
 ISSUES_URL = "https://github.com/TypeOneAppolo/tcv-multiplayer-mod/issues"
 
 RUN_LOG_DIR = HERE / "install_logs"
@@ -671,6 +673,16 @@ def patch_project_godot(work: Path) -> None:
 
 
 def detect_version(work: Path) -> str:
+    """Prefer the game's own in-code version constant over project.godot's
+    config/version field. The 0.5.3 patch shipped with GAME_VERSION bumped in
+    common/globals/m.gd but config/version left at "0.5.2" -- the field the
+    devs actually show players is the reliable one, the project metadata
+    isn't."""
+    m_gd = work / "common" / "globals" / "m.gd"
+    if m_gd.is_file():
+        match = re.search(r'const\s+GAME_VERSION\s*:\s*String\s*=\s*"([^"]+)"', read_text(m_gd))
+        if match:
+            return match.group(1)
     match = re.search(r'config/version="([^"]+)"', read_text(work / "project.godot"))
     if not match:
         raise Failed("project.godot has no config/version -- unexpected game build")
@@ -737,6 +749,55 @@ def powershell(script: str, timeout: int = 30) -> str:
     except (OSError, subprocess.SubprocessError):
         return ""
     return proc.stdout.strip()
+
+
+def defender_exclusions() -> list[str]:
+    raw = powershell("(Get-MpPreference -ErrorAction SilentlyContinue).ExclusionPath -join '|'")
+    return [p for p in raw.split("|") if p]
+
+
+def add_defender_exclusion(folder: Path) -> bool:
+    """Asks Windows to elevate (one UAC prompt) and adds the exclusion itself,
+    so most people never hit the "the export produced no file" failure at all
+    instead of only being told how to fix it after Defender has already deleted
+    a build. Best-effort: a declined UAC prompt or a non-admin account just
+    means the reactive fallback in explain_missing_export() still applies."""
+    exe = shutil.which("powershell") or shutil.which("pwsh")
+    if not exe:
+        return False
+    inner = f"Add-MpPreference -ExclusionPath '{folder}'"
+    try:
+        subprocess.run(
+            [exe, "-NoProfile", "-Command",
+             f"Start-Process powershell -Verb RunAs -Wait -ArgumentList "
+             f"'-NoProfile -Command \"{inner}\"'"],
+            capture_output=True, text=True, errors="replace", timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return str(folder) in defender_exclusions()
+
+
+def offer_defender_exclusion(folder: Path) -> None:
+    if not sys.stdin.isatty() or not realtime_protection_on():
+        return
+    if str(folder) in defender_exclusions():
+        return
+    print("\nWindows Defender is on, and it's the single most common reason this")
+    print("installer fails: it quarantines the freshly built exe the instant Godot")
+    print(f"renames it, in {folder}. I can add a Defender exclusion for that folder")
+    print("now -- one UAC prompt -- and the build should just work. Say no and it")
+    print("builds anyway; if Defender does grab it you'll get the same offer again")
+    print("after, with the exact detection.")
+    try:
+        answer = input("\nAdd a Defender exclusion for that folder now? [Y/N] ").strip()
+    except EOFError:
+        return
+    if answer.lower() != "y":
+        return
+    if add_defender_exclusion(folder):
+        say("defender", f"excluded {folder}")
+    else:
+        say("warn", "could not confirm the exclusion went in -- carrying on anyway")
 
 
 def defender_detections(output: Path) -> list[str]:
@@ -827,15 +888,14 @@ def export(godot: Path, work: Path, output: Path) -> None:
             raise Failed("the export produced no file -- see the notes above")
 
 
-def open_the_discord() -> None:
-    """Nobody plays this on their own, and half of what goes wrong is somebody
-    on the wrong build or the wrong voice packs -- both of which take one message
-    to sort out and an evening to work out alone. The link is printed either way,
-    so a machine with no browser to open loses nothing."""
-    print(f"\nCome say hello, find people to play with, or shout at me when it breaks:")
-    print(f"  {DISCORD_URL}")
+def open_the_kofi() -> None:
+    """This mod is free and always will be. The link is printed either way, so
+    a machine with no browser to open loses nothing."""
+    print(f"\nThis is free and always will be. If it got your group playing together,")
+    print(f"a coffee helps me keep working on it:")
+    print(f"  {KOFI_URL}")
     try:
-        opened = webbrowser.open(DISCORD_URL)
+        opened = webbrowser.open(KOFI_URL)
     except Exception:
         opened = False
     if opened:
@@ -851,8 +911,8 @@ def main(argv: list[str]) -> int:
                          f"({' or '.join(SUPPORTED_VERSIONS)})")
     ap.add_argument("-o", "--output", default=DEFAULT_OUTPUT,
                     help=f"where to write the modded exe (default: {DEFAULT_OUTPUT})")
-    ap.add_argument("--no-discord", action="store_true",
-                    help="don't open the Discord invite when the build finishes")
+    ap.add_argument("--no-kofi", action="store_true",
+                    help="don't open the Ko-fi page when the build finishes")
     ap.add_argument("--zip-logs", action="store_true",
                     help="bundle this tool's logs and the game's own logs into a zip "
                          "you can attach to a GitHub issue, then exit -- no game exe "
@@ -901,6 +961,10 @@ def main(argv: list[str]) -> int:
     exe = Path(args.game_exe) if args.game_exe else choose_game_exe()
     check_game_exe(exe)
 
+    exclusion_folders = {work.resolve().parent, Path(args.output).resolve().parent}
+    for folder in exclusion_folders:
+        offer_defender_exclusion(folder)
+
     say("1/5", "getting gdRE Tools")
     gdre = get_gdre(cache, args.gdre)
 
@@ -925,8 +989,8 @@ def main(argv: list[str]) -> int:
     print(f"\nDone -> {output.resolve()}  ({size // 1048576} MB)")
     print("Launch it, press F9 on the main menu to open the online lobby.")
     print("Everyone you play with needs to build this same version themselves.")
-    if not args.no_discord:
-        open_the_discord()
+    if not args.no_kofi:
+        open_the_kofi()
     return 0
 
 

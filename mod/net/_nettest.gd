@@ -38,14 +38,23 @@ func _check_handshake_ordering() -> void:
 		print("NETTEST FAIL | handshake is no longer first, rpc order starts %s" % str(names.slice(0, 3)))
 
 
-func _fake_take() -> AudioStreamWAV:
+# takes go over the wire compressed, and fall back to raw for anything that does
+# not shrink. Both paths have to come back out the same size they went in, so the
+# two submissions below use one of each: near silence squashes to nothing, noise
+# does not squash at all.
+func _fake_take(compressible: bool = true) -> AudioStreamWAV:
 	var w: = AudioStreamWAV.new()
 	w.format = AudioStreamWAV.FORMAT_16_BITS
 	w.mix_rate = 44100
 	w.stereo = false
 	var data: = PackedByteArray()
 	data.resize(120000)
-	for i: int in range(0, data.size(), 997): data[i] = 42
+	if compressible:
+		for i: int in range(0, data.size(), 997): data[i] = 42
+	else:
+		var rng: = RandomNumberGenerator.new()
+		rng.seed = 1234
+		for i: int in data.size(): data[i] = rng.randi() & 0xff
 	w.data = data
 	return w
 
@@ -113,7 +122,7 @@ func _run_host() -> void:
 	print("NETTEST | host began session %d" % Net.session_id)
 
 	await get_tree().create_timer(2.0).timeout
-	var take2: AudioStreamWAV = _fake_take()
+	var take2: AudioStreamWAV = _fake_take(false)
 	take2.data = take2.data.slice(0, 60000)
 	print("NETTEST | submitting %d bytes for slot 0 (session 2)" % take2.data.size())
 	await Net.submit_performance(0, {"max": PackedByteArray([9])}, take2)
@@ -178,6 +187,8 @@ func _run_client() -> void:
 	var perf: Dictionary = await Net.await_performance(0)
 	var got: int = perf["wav"].data.size() if perf.has("wav") else -1
 	print("NETTEST | client received take: %d bytes, plmic=%s" % [got, str(perf.get("plmic", {}))])
+	if got == 120000: print("NETTEST PASS | compressed take came back the size it went in")
+	else: print("NETTEST FAIL | compressed take came back as %d bytes, wanted 120000" % got)
 
 	await Net.barrier("t1")
 	print("NETTEST | client cleared barrier")
@@ -192,7 +203,7 @@ func _run_client() -> void:
 	var perf2: Dictionary = await Net.await_performance(0)
 	var got2: int = perf2["wav"].data.size() if perf2.has("wav") else -1
 	print("NETTEST | client received take: %d bytes, plmic=%s" % [got2, str(perf2.get("plmic", {}))])
-	if got2 == 60000: print("NETTEST PASS | second session take is the new one")
+	if got2 == 60000: print("NETTEST PASS | second session take is the new one, sent uncompressed")
 	else: print("NETTEST FAIL | second session returned %d bytes (stale inbox)" % got2)
 
 	await Net.barrier("t1")

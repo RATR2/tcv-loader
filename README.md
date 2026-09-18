@@ -32,7 +32,7 @@ in one place so you're not all sat looking at different numbers.
 Works for the normal game show and for dub mode, where you pick which character
 you're dubbing and then watch the finished thing together.
 
-**Windows 0.5.1 and 0.5.2 dev-2. You need to own the game.**
+**Windows 0.5.1, 0.5.2 dev-2, and 0.5.3. You need to own the game.**
 
 ## contents
 
@@ -103,7 +103,17 @@ paste the path in when it asks you.
 You need python installed. If you haven't got it the installer offers to get it
 through winget, which is Microsoft's own package manager and already on your pc,
 or you can grab it yourself from [python.org](https://www.python.org/downloads/)
-and tick "Add python.exe to PATH" on the first screen.
+and tick "Add python.exe to PATH" on the first screen. Say yes to winget and it
+carries straight on in the same window afterwards, no need to close it and
+double click Install.bat a second time.
+
+Before it touches anything else it also checks whether Windows Defender is
+running, and if so offers to add a one-time exclusion for the folder it's
+building in -- that's the single most common way a build gets deleted out from
+under the installer partway through (see [the export produced no
+file](#troubleshooting) below). Say yes and it's one UAC prompt, then that
+whole class of failure just doesn't happen. Say no and it builds anyway; you
+get the same offer again afterwards if Defender does end up taking it.
 
 An earlier version downloaded a copy of python itself and ran it. That's exactly
 what a malware dropper does and antivirus started flagging the download, so it
@@ -112,7 +122,7 @@ doesn't do that any more. See
 
 It downloads about 140mb of tools ([gdRE](https://github.com/GDRETools/gdsdecomp)
 and [Godot](https://godotengine.org), both free), builds the mod, and leaves
-`TheChoicerVoicer-Multiplayer-1.2.0-dev.exe` sat in the same folder. Takes a few
+`TheChoicerVoicer-Multiplayer-1.1.9.exe` sat in the same folder. Takes a few
 minutes. Run it again later and it reuses the downloads so it's quicker the
 second time.
 
@@ -122,7 +132,7 @@ one are you running" — and now the answer is on the exe you launched rather th
 buried in a menu. Old builds are left alone, so you can keep one around to play
 with somebody who hasn't updated yet.
 
-When it finishes it opens the Discord invite in your browser. `--no-discord`
+When it finishes it opens my Ko-fi page in your browser. `--no-kofi`
 turns that off.
 
 Your saves and packs don't get touched. The modded exe reads the same
@@ -144,7 +154,7 @@ python install_mod.py "C:\path\to\TheChoicerVoicer_0-5-1 stable.exe"
 | Flag | What it does |
 | --- | --- |
 | `-o PATH` | where to put the modded exe |
-| `--no-discord` | don't open the Discord invite when the build finishes |
+| `--no-kofi` | don't open the Ko-fi page when the build finishes |
 | `--godot PATH` | use a Godot 4.4.1 you've already got |
 | `--gdre PATH` | use a `gdre_tools.exe` you've already got |
 | `--keep-work` | keep the decompiled project instead of binning it |
@@ -356,9 +366,9 @@ sat in it together.
 full path when it asks. It only auto checks itch, downloads and desktop.
 
 **The installer stops with a "hunk does not match" error.** Your game isn't one
-of the versions the patches are written against. It handles Windows 0.5.1 and
-0.5.2 (dev-2, standard and compatibility builds), and it tells you which one it
-thinks you gave it.
+of the versions the patches are written against. It handles Windows 0.5.1,
+0.5.2 (dev-2, standard and compatibility builds), and 0.5.3, and it tells you
+which one it thinks you gave it.
 
 **Antivirus flags the download.** See [is this a virus](#is-this-a-virus).
 
@@ -461,7 +471,7 @@ acknowledged as they arrive now, which took another call, and they go over the
 wire compressed, so the audio itself is in a different shape too. Same story:
 right message on both screens, everybody rebuilds.
 
-v1.2.0-dev is on protocol 8. Dub mode identifies the selected pack by its file
+v1.1.9 is on protocol 8. Dub mode identifies the selected pack by its file
 contents, offers it to anyone missing it, streams accepted downloads through the
 existing ENet connection with a bounded acknowledged window, verifies every file
 with SHA-256, and waits for the whole lobby before starting. The dub start packet
@@ -658,13 +668,18 @@ mod/net/_nettest.gd               headless host/client smoke test
 mod/patches/common/*.patch        edits that apply to every version
 mod/patches/v0_5_1/*.patch        the files that differ on 0.5.1
 mod/patches/v0_5_2/*.patch        the files that differ on 0.5.2
+mod/patches/v0_5_3/*.patch        the files that differ on 0.5.3
 mod/export_presets.cfg            the windows export preset
 ```
 
-The installer reads `config/version` out of the decompiled project and picks the
-right patch set, so supporting a new build usually means one extra folder. It
-also fixes a gdRE bug where it writes node paths as `$A / B`, which every
-decompiled build needs sorting whether you're modding it or not.
+The installer reads the game's own `GAME_VERSION` constant out of the
+decompiled project (falling back to `config/version` if that's missing) and
+picks the right patch set, so supporting a new build usually means one extra
+folder. The fallback matters: the 0.5.3 patch shipped with `GAME_VERSION`
+bumped but `config/version` left saying "0.5.2", so trusting the project
+metadata alone would have misdetected it. It also fixes a gdRE bug where it
+writes node paths as `$A / B`, which every decompiled build needs sorting
+whether you're modding it or not.
 
 ## working on it
 
@@ -718,10 +733,10 @@ against a clean decompile with the node path fix applied.
   reliable entry points if a future game build changes Extras.
 - The community installer supports ZIP archives only, has no update screen, and
   restarts canceled downloads rather than resuming their partial files.
-- Windows 0.5.1 and 0.5.2 dev-2. Anything else fails with a clear error when it
-  goes to patch it.
+- Windows 0.5.1, 0.5.2 dev-2, and 0.5.3. Anything else fails with a clear error
+  when it goes to patch it.
 - Everyone needs the same build. The mod checks and kicks you out with a message
-  if you don't, but it can't mix a 0.5.1 host with a 0.5.2 client.
+  if you don't, but it can't mix a 0.5.1 host with a 0.5.2 or 0.5.3 client.
 - Twitch modes are singleplayer, haven't touched them.
 - Pack differences only get checked against the clips actually picked.
 

@@ -10,13 +10,17 @@ signal server_disconnected
 signal host_notice(text: String)
 signal match_should_start(clip_paths: PackedStringArray)
 signal performance_received(slot: int)
+# a take on its way, so both ends can say so rather than showing a frozen caption
+# for however long the link takes. byte counts are of the compressed payload.
+signal performance_send_progress(slot: int, sent: int, total: int)
+signal performance_recv_progress(slot: int, received: int, total: int)
 signal scores_received(scores: PackedInt32Array)
 
 # shown in the lobby and the log, so two people can compare builds. bump it for
 # anything that goes out, even when the protocol below does not move: two builds
 # that behave differently and both call themselves 1.1.5 make the one question
 # worth asking -- "what does yours say?" -- impossible to answer.
-const MOD_VERSION: String = "1.2.0-dev"
+const MOD_VERSION: String = "1.1.9"
 
 const PORT: int = 7654
 const MAX_PLAYERS: int = 4
@@ -24,8 +28,9 @@ const MAX_PLAYERS: int = 4
 # transfer calls live on a PackSync child so the handshake below stays pinned,
 # but _rpc_start_dub now carries a content ID and relative paths instead of the
 # host's absolute disk paths. It is deliberately incompatible with older builds.
-# 7: recording chunks are compressed and acknowledged instead of filling ENet's
-# reliable queue on a slow link.
+# Also where recording chunks actually became compressed and acknowledged
+# instead of filling ENet's reliable queue on a slow link -- see the long note
+# above submit_performance.
 # 6: the dub watch goes through the host now, which took two new @rpc methods.
 # Both are named _rpc_* so the handshake still sorts first and a 1.1.6 joiner is
 # told what is wrong rather than hanging -- but every call index after them has
@@ -39,8 +44,24 @@ const MAX_PLAYERS: int = 4
 # manifest from an older build would compare against nothing and read as a
 # missing pack. better to say so than to let it look broken.
 const PROTOCOL_VERSION: int = 8
-const CHUNK_SIZE: int = 24576
-const PERFORMANCE_TIMEOUT: float = 60.0
+const CHUNK_SIZE: int = 16384
+# how far ahead of the slowest listener the sender is allowed to get. this is the
+# whole of the fix described above submit_performance: keep the amount of
+# unacknowledged audio inside ENet small enough that any link which moves at all
+# can drain it, and it never runs out of retransmits and drops the peer.
+# 64KB is one round trip's worth on anything from a LAN to a relayed VPN.
+const PERF_WINDOW_BYTES: int = 65536
+# a listener that has acknowledged nothing at all for this long is not listening.
+# Stop holding the recorder up for them; the take is lost for that one peer and
+# their end skips the clip, which beats freezing everybody.
+const PERF_ACK_TIMEOUT: float = 45.0
+# nothing has been heard about this clip yet -- whoever owns it is presumably
+# still recording, and may well have started over a few times. Long on purpose:
+# the old flat 60s timeout skipped people who were merely taking their time.
+const PERFORMANCE_IDLE_TIMEOUT: float = 300.0
+# a take that started arriving and then stopped. This one can be short, because
+# every chunk is acknowledged: silence here really is silence.
+const PERFORMANCE_STALL_TIMEOUT: float = 45.0
 const BARRIER_TIMEOUT: float = 90.0
 # how long either end waits on the join handshake before saying so. the work
 # behind it is a dictionary and two rpcs, so anything approaching this is not
@@ -53,8 +74,14 @@ const HANDSHAKE_TIMEOUT: float = 10.0
 # mod can't yield for them -- and on a slow disk that alone can outlast 30s and
 # take the lobby down with it. Given a barrier waits 90s before it gives up on
 # somebody, the connection has no business dying before then.
+#
+# 15000 was not enough on its own. ENet gives up when the retransmit backoff has
+# run out *and* the minimum has passed, and the backoff runs out at about thirty
+# seconds -- so a peer that could not keep up was still being dropped at the
+# thirty second mark, which is exactly what the kicked-mid-dub reports were. The
+# real fix is the send window in submit_performance; this is the margin around it.
 const PEER_TIMEOUT_LIMIT: int = 32
-const PEER_TIMEOUT_MIN: int = 15000
+const PEER_TIMEOUT_MIN: int = 30000
 const PEER_TIMEOUT_MAX: int = 90000
 
 
@@ -205,6 +232,7 @@ func leave() -> void:
 func _reset_session_state() -> void:
 	_perf_inbox.clear()
 	_perf_staging.clear()
+	_perf_acks.clear()
 	_barriers.clear()
 	_barriers_done.clear()
 	_barrier_released.clear()
@@ -775,26 +803,136 @@ func clear_round_performances() -> void:
 	_perf_staging.clear()
 
 
+### sending a take ############################################################
+#
+# A take is about a megabyte of raw PCM per clip. Up to v1.1.7 the whole of it
+# was handed to ENet as fast as the frame loop would go -- a 24KB reliable packet
+# every frame, so 1.4MB/s offered whatever the link underneath could actually
+# carry. On a LAN that is fine. Over Hamachi or Radmin, which relay through a
+# server whenever they cannot connect two people directly, it is nowhere near,
+# and ENet does not push back: it queues everything it is given, retransmits what
+# is not acknowledged, and after about thirty seconds of getting nowhere it
+# declares the peer dead and drops it.
+#
+# That is the whole of the "we were playing fine and then he was just gone, no
+# message" report. It is also why the joiner sat on clip 1 while the host was on
+# clip 5 -- the take for clip 1 never landed, so their end never moved on, while
+# the host's end never waits for anything and carried straight on recording.
+#
+# So the sender now waits to be told the audio is arriving. Every chunk is
+# acknowledged, and the sender never gets more than PERF_WINDOW_BYTES ahead of
+# the slowest listener. ENet is only ever holding a window's worth, which any
+# link that moves at all can drain, so its retransmit budget never runs out.
+# The take is compressed first, which is lossless and takes a good third off.
+#
+# It also keeps the two ends together by itself: the recorder does not move to
+# the next clip until everyone has the last one.
+
+# slot -> {peer -> {"bytes": how much they have acknowledged, "at": when}}.
+# only populated while a send is in flight.
+var _perf_acks: Dictionary = {}
+
+# bigger than any take, so "nobody left to wait for" never gates the window.
+const _NO_ONE_LISTENING: int = 1 << 40
+
+
 func submit_performance(slot: int, plmic: Dictionary, take: AudioStreamWAV) -> void:
 	var meta: Dictionary = _wav_meta(take)
-	var data: PackedByteArray = take.data
+	var raw: PackedByteArray = take.data
 	_perf_inbox[slot] = {"plmic": plmic, "wav": take}
 	if not is_online():
 		performance_received.emit(slot)
 		return
+
+	# lossless. the point is not the disk space, it is that every byte has to
+	# cross a link that on a relayed VPN is a small fraction of a LAN.
+	var body: PackedByteArray = raw.compress(FileAccess.COMPRESSION_ZSTD)
+	var packed: bool = not body.is_empty() and body.size() < raw.size()
+	if not packed: body = raw
+	meta["raw_bytes"] = raw.size()
+	meta["packed"] = packed
+	meta["wire_bytes"] = body.size()
+
 	var sid: int = session_id
+	_open_acks(slot)
 	_rpc_perf_begin.rpc(sid, slot, plmic, meta)
 	var offset: int = 0
-	while offset < data.size():
-		if not is_online() or session_id != sid: return
-		var end: int = mini(offset + CHUNK_SIZE, data.size())
-		_rpc_perf_chunk.rpc(sid, slot, data.slice(offset, end))
+	while offset < body.size():
+		if not _still_sending(sid, slot): return
+		# the window. _prune_acks drops anyone who has stopped answering, so this
+		# cannot wait forever on a peer that has quietly gone away.
+		while offset - _ack_floor(slot) >= PERF_WINDOW_BYTES:
+			await get_tree().process_frame
+			if not _still_sending(sid, slot): return
+		var end: int = mini(offset + CHUNK_SIZE, body.size())
+		_rpc_perf_chunk.rpc(sid, slot, body.slice(offset, end))
 		offset = end
+		performance_send_progress.emit(slot, offset, body.size())
 		await get_tree().process_frame
-	if not is_online() or session_id != sid: return
+	if not _still_sending(sid, slot): return
 	_rpc_perf_end.rpc(sid, slot)
-	log_net("sent %d bytes for slot %d" % [data.size(), slot])
+	_perf_acks.erase(slot)
+	if packed:
+		log_net("sent %d bytes for slot %d (%d compressed)" % [raw.size(), slot, body.size()])
+	else:
+		log_net("sent %d bytes for slot %d" % [raw.size(), slot])
 	performance_received.emit(slot)
+
+
+# one check for everything that means "stop": the lobby closed under us, the show
+# ended, or a new session started. Also the point where dead listeners are pruned.
+func _still_sending(sid: int, slot: int) -> bool:
+	if not is_online() or session_id != sid:
+		_perf_acks.erase(slot)
+		return false
+	_prune_acks(slot)
+	return true
+
+
+func _open_acks(slot: int) -> void:
+	var now: int = Time.get_ticks_msec()
+	var state: Dictionary = {}
+	for peer: int in multiplayer.get_peers(): state[peer] = {"bytes": 0, "at": now}
+	_perf_acks[slot] = state
+
+
+# forget anyone who has left, and anyone who has said nothing for long enough
+# that they clearly are not going to. Their end will skip the clip and say so.
+func _prune_acks(slot: int) -> void:
+	if not _perf_acks.has(slot): return
+	var state: Dictionary = _perf_acks[slot]
+	var live: PackedInt32Array = multiplayer.get_peers()
+	var now: int = Time.get_ticks_msec()
+	var quiet_for: int = int(PERF_ACK_TIMEOUT * 1000.0)
+	for peer: int in state.keys():
+		if not live.has(peer):
+			state.erase(peer)
+			continue
+		var entry: Dictionary = _as_dictionary(state[peer])
+		if now - int(entry.get("at", now)) > quiet_for:
+			log_net(("peer %d has acknowledged nothing for %.0fs, sending the rest of "
+				+ "slot %d without waiting for them") % [peer, PERF_ACK_TIMEOUT, slot])
+			state.erase(peer)
+
+
+func _ack_floor(slot: int) -> int:
+	var state: Dictionary = _as_dictionary(_perf_acks.get(slot, {}))
+	if state.is_empty(): return _NO_ONE_LISTENING
+	var lowest: int = _NO_ONE_LISTENING
+	for peer: int in state:
+		lowest = mini(lowest, int(_as_dictionary(state[peer]).get("bytes", 0)))
+	return lowest
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_perf_ack(sid: int, slot: int, received: int) -> void:
+	if sid != session_id: return
+	if not _perf_acks.has(slot): return
+	var state: Dictionary = _perf_acks[slot]
+	var peer: int = multiplayer.get_remote_sender_id()
+	if not state.has(peer): return
+	var so_far: int = int(_as_dictionary(state[peer]).get("bytes", 0))
+	state[peer] = {"bytes": maxi(so_far, received), "at": Time.get_ticks_msec()}
 
 
 @rpc("any_peer", "call_remote", "reliable")
@@ -807,7 +945,16 @@ func _rpc_perf_begin(sid: int, slot: int, plmic: Dictionary, meta: Dictionary) -
 func _rpc_perf_chunk(sid: int, slot: int, chunk: PackedByteArray) -> void:
 	if sid != session_id: return
 	if not _perf_staging.has(slot): return
-	_perf_staging[slot]["data"].append_array(chunk)
+	var staged: Dictionary = _perf_staging[slot]
+	var data: PackedByteArray = staged["data"]
+	data.append_array(chunk)
+	staged["data"] = data
+	# the acknowledgement the sender's window turns on. Per chunk rather than
+	# every so often: it is a handful of bytes, and it doubles as the progress
+	# both ends put on screen.
+	_rpc_perf_ack.rpc_id(multiplayer.get_remote_sender_id(), sid, slot, data.size())
+	performance_recv_progress.emit(slot, data.size(),
+		int(_as_dictionary(staged["meta"]).get("wire_bytes", 0)))
 
 
 @rpc("any_peer", "call_remote", "reliable")
@@ -815,18 +962,38 @@ func _rpc_perf_end(sid: int, slot: int) -> void:
 	if sid != session_id: return
 	if not _perf_staging.has(slot): return
 	var staged: Dictionary = _perf_staging[slot]
-	_perf_inbox[slot] = {
-		"plmic": staged["plmic"],
-		"wav": _wav_from(staged["meta"], staged["data"]),
-	}
+	var meta: Dictionary = _as_dictionary(staged["meta"])
+	var data: PackedByteArray = staged["data"]
+	if bool(meta.get("packed", false)):
+		var raw_size: int = int(meta.get("raw_bytes", 0))
+		var expanded: PackedByteArray = data.decompress(raw_size, FileAccess.COMPRESSION_ZSTD)
+		if expanded.size() != raw_size:
+			log_net("slot %d arrived but would not decompress (%d of %d bytes), skipping it" % [
+				slot, expanded.size(), raw_size])
+			_perf_staging.erase(slot)
+			return
+		data = expanded
+	_perf_inbox[slot] = {"plmic": staged["plmic"], "wav": _wav_from(meta, data)}
 	_perf_staging.erase(slot)
-	log_net("received take for slot %d" % slot)
+	log_net("received take for slot %d, %d bytes" % [slot, data.size()])
 	performance_received.emit(slot)
 
 
+func _staged_bytes(slot: int) -> int:
+	if not _perf_staging.has(slot): return -1
+	return PackedByteArray(_as_dictionary(_perf_staging[slot]).get("data", PackedByteArray())).size()
+
+
+# two clocks, not one. Waiting on somebody who has not started sending is waiting
+# on them to finish recording, which can take as long as it takes; waiting in the
+# middle of a transfer that has gone quiet is waiting on a link that has died.
+# The single 60s timeout this replaces could not tell those apart, so it skipped
+# people who were only being thorough -- and on a slow link it gave up on a take
+# that was still perfectly well on its way.
 func await_performance(slot: int, owner_slot: int = -1) -> Dictionary:
-	var waited: float = 0.0
 	var sid: int = session_id
+	var quiet: float = 0.0
+	var seen: int = _staged_bytes(slot)
 	while not _perf_inbox.has(slot):
 		var owner_peer: int = peer_for_slot(owner_slot if owner_slot >= 0 else slot)
 		if owner_peer != 0 and not players.has(owner_peer):
@@ -838,9 +1005,16 @@ func await_performance(slot: int, owner_slot: int = -1) -> Dictionary:
 			log_net("session ended while waiting for slot %d" % slot)
 			return {}
 		await get_tree().process_frame
-		waited += get_process_delta_time()
-		if waited > PERFORMANCE_TIMEOUT:
-			log_net("timed out after %.0fs waiting for slot %d" % [waited, slot])
+		var now: int = _staged_bytes(slot)
+		if now != seen:
+			seen = now
+			quiet = 0.0
+		else:
+			quiet += get_process_delta_time()
+		var patience: float = PERFORMANCE_IDLE_TIMEOUT if seen < 0 else PERFORMANCE_STALL_TIMEOUT
+		if quiet > patience:
+			if seen < 0: log_net("slot %d has not started sending after %.0fs, skipping them" % [slot, quiet])
+			else: log_net("slot %d went quiet %.0fs into its take, skipping them" % [slot, quiet])
 			break
 	return _perf_inbox.get(slot, {})
 

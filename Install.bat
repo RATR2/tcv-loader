@@ -53,8 +53,30 @@ winget install -e --id Python.Python.3.12 --accept-source-agreements --accept-pa
 if errorlevel 1 goto manual
 
 echo.
-echo Python installed. You'll need to close this window and run Install.bat
-echo again so it picks up the new install.
+echo Python's installed. Picking it up in this same window...
+
+rem winget updates the registry's copy of PATH, but this window's own copy of
+rem PATH was loaded before that happened, so "python" still wouldn't be found
+rem without this -- which is why people used to have to close and reopen.
+for /f "skip=2 tokens=1,2,*" %%A in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul') do set "SYS_PATH=%%C"
+for /f "skip=2 tokens=1,2,*" %%A in ('reg query "HKCU\Environment" /v Path 2^>nul') do set "USER_PATH=%%C"
+set "PATH=%SYS_PATH%;%USER_PATH%;%PATH%"
+
+py -3 --version >nul 2>&1
+if not errorlevel 1 (
+  set "PYEXE=py"
+  set "PYARGS=-3"
+  goto run
+)
+python --version >nul 2>&1
+if not errorlevel 1 (
+  set "PYEXE=python"
+  goto run
+)
+
+echo.
+echo That's installed, but this window still can't see it. Close this window and
+echo run Install.bat again -- it'll pick it up fresh next time.
 echo.
 pause
 exit /b 0
