@@ -135,7 +135,11 @@ jobs:
           if [ -L "$INTERP" ]; then
             RUNTIME_BIN=$(readlink -f "$INTERP")
             RUNTIME_ROOT=$(dirname "$(dirname "$RUNTIME_BIN")")
-            cp -r "$RUNTIME_ROOT" ./python-runtime
+            echo "RUNTIME_ROOT=$RUNTIME_ROOT"
+            du -sh "$RUNTIME_ROOT"
+            echo "non-regular, non-directory entries (these are what could hang a plain cp):"
+            find "$RUNTIME_ROOT" -not -type f -not -type d -exec ls -la {} \;
+            timeout 90 cp -r "$RUNTIME_ROOT" ./python-runtime
             INTERP_NAME=$(basename "$RUNTIME_BIN")
             INTERP_DIR=$(dirname "$INTERP")
             rm "$INTERP"
