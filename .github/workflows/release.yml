@@ -118,13 +118,12 @@ jobs:
 
       # A uv-managed venv's interpreter is a symlink into uv's own Python cache: an absolute path
       # on *this* runner, even with --relocatable, which only fixes the activation scripts, not
-      # this. --managed-python on the venv step guarantees it's always that cache, never a system
-      # interpreter, whose real path resolves somewhere like /usr and would make RUNTIME_ROOT
-      # below very wrong (confirmed live: a system python got picked on ubuntu-latest here before
-      # that flag was added, resolving RUNTIME_ROOT to /usr and hanging cp on the whole tree). The
-      # path check below is a second guard in case that ever regresses. python-build-standalone
-      # builds (what uv manages) are relocatable by design, so bundling the whole runtime alongside
-      # the venv and re-pointing the symlink at it, relatively, makes the package self-contained.
+      # this. --managed-python keeps it from ever being a system interpreter, whose real path
+      # could resolve somewhere like /usr and make RUNTIME_ROOT below very wrong; the guard below
+      # checks the directory's own name rather than its location, since setup-uv relocates the
+      # cache under $RUNNER_TEMP rather than uv's own default path. python-build-standalone builds
+      # (what uv manages) are relocatable by design, so bundling the whole runtime alongside the
+      # venv and re-pointing the symlink at it, relatively, makes the package self-contained.
       # Windows venvs normally copy python.exe rather than symlink it, so this is a no-op there;
       # the -L check is what makes that safe either way.
       - name: Make the venv self-contained
@@ -134,8 +133,8 @@ jobs:
           if [ -L "$INTERP" ]; then
             RUNTIME_BIN=$(readlink -f "$INTERP")
             RUNTIME_ROOT=$(dirname "$(dirname "$RUNTIME_BIN")")
-            case "$RUNTIME_ROOT" in
-              */uv/python/*) ;;
+            case "$(basename "$RUNTIME_ROOT")" in
+              cpython-*) ;;
               *) echo "RUNTIME_ROOT '$RUNTIME_ROOT' isn't a uv-managed Python install, refusing to copy it" >&2; exit 1 ;;
             esac
             timeout 90 cp -r "$RUNTIME_ROOT" ./python-runtime
