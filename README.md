@@ -47,7 +47,7 @@ Either one sets up a `.venv` (using [uv](https://astral.sh/uv) if it's on your P
 |---|---|
 | `run.sh` / `run.bat` | Set up (or repair) a `.venv` and launch the app. Safe to run every time. |
 | `loader/app.py` | The desktop app: a pywebview window, and the API it exposes to the page. |
-| `loader/ui/` | The page itself: modpack list, install panel, no server involved. |
+| `ui/` | The page itself: modpack list, install panel, no server involved. Sits next to `modpacks/`, not under `loader/`, since a packaged build ships it alongside the executable rather than inside it. |
 | `loader/loader_core/engine.py` | The actual engine: downloading gdRE/Godot, decompiling, patching, exporting. No notion of "the mod"; that's the layer above. |
 | `loader/loader_core/install.py` | Drives `engine.py` and calls `modpacks/combiner/combine.py` to merge whatever's enabled, reporting progress through a callback instead of stdout. |
 | `loader/loader_core/modpacks.py` | Discovery, enable/disable, and reorder state for the GUI. |

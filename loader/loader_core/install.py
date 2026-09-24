@@ -25,13 +25,13 @@ from pathlib import Path
 from types import ModuleType
 from typing import Callable
 
-from loader_core import engine
+from loader_core import bundled_resource, engine, repo_root
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+REPO_ROOT = repo_root()
 MODPACKS_DIR = REPO_ROOT / "modpacks"
 LOADORDER_PATH = MODPACKS_DIR / "combiner" / "loadorder.json"
 COMBINE_PATH = MODPACKS_DIR / "combiner" / "combine.py"
-EXPORT_PRESET_TEMPLATE = Path(__file__).resolve().parent / "export_presets_template.cfg"
+EXPORT_PRESET_TEMPLATE = bundled_resource("export_presets_template.cfg")
 
 # No version suffix (unlike engine.OUTPUT_STEM): replaced every install, not versioned; see export_copy() below to save one out first.
 OUTPUT_STEM = "TheChoicerVoicer-Modded"

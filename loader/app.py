@@ -17,12 +17,12 @@ from pathlib import Path
 import webview
 from webview import FileDialog
 
-from loader_core import install, modpacks
+from loader_core import install, modpacks, repo_root
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = repo_root()
 MODPACKS_DIR = REPO_ROOT / "modpacks"
 LOADORDER_PATH = MODPACKS_DIR / "combiner" / "loadorder.json"
-UI_INDEX = Path(__file__).resolve().parent / "ui" / "index.html"
+UI_INDEX = REPO_ROOT / "ui" / "index.html"
 
 
 class Api:

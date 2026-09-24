@@ -59,7 +59,10 @@ jobs:
       release_number: ${{ steps.number.outputs.release_number }}
       base_name: ${{ steps.name.outputs.base_name }}
     steps:
+      # Full history, not the default shallow clone: the changelog step below needs it.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # The highest entry in engine.SUPPORTED_VERSIONS, not hardcoded here,
       # so this stays correct as new game versions get support added.
@@ -76,22 +79,64 @@ jobs:
           ")
           echo "game_version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      # Counts existing releases this workflow made (by tag prefix) and adds
-      # one, so it's "the Nth release", not tied to commit count or run
-      # number (which would have gaps from non-release pushes).
+      # Counts only same-game-version releases, so an update that stays on the same
+      # version keeps counting (0.5.3-1, 0.5.3-2, ...) instead of inheriting older versions' totals.
       - name: Work out this release's incremental number
         id: number
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          PREFIX="TCV_Loader-${{ steps.version.outputs.game_version }}-"
           COUNT=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 --json tagName \
-            --jq '[.[] | select(.tagName | startswith("TCV_Loader-"))] | length')
+            --jq "[.[] | select(.tagName | startswith(\"$PREFIX\"))] | length")
           echo "release_number=$((COUNT + 1))" >> "$GITHUB_OUTPUT"
 
       - name: Compose the shared base name
         id: name
         run: |
           echo "base_name=TCV_Loader-${{ steps.version.outputs.game_version }}-${{ steps.number.outputs.release_number }}" >> "$GITHUB_OUTPUT"
+
+      # Notes are the commit's own description (between the subject and the "tags:" trailer)
+      # plus a changelog since the last release tag. A file artifact, not a job output, since
+      # --notes would otherwise shell-interpolate arbitrary commit text in a different job.
+      - name: Compose the release notes
+        id: notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          PREV_TAG=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 --json tagName --jq '.[0].tagName // ""')
+
+          python3 - <<'EOF' > description.txt
+          import os
+
+          body = os.environ.get("MESSAGE", "").splitlines()[1:]
+          while body and not body[0].strip():
+              body.pop(0)
+          for i, line in enumerate(body):
+              if line.strip().lower() == "tags:":
+                  body = body[:i]
+                  break
+          while body and not body[-1].strip():
+              body.pop()
+          print("\n".join(body))
+          EOF
+
+          {
+            cat description.txt
+            if [ -n "$PREV_TAG" ]; then
+              echo ""
+              echo "---"
+              echo ""
+              echo "**Commits since $PREV_TAG:**"
+              git log --pretty="format:- %s (%h)" "$PREV_TAG"..HEAD
+            fi
+          } > notes.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: notes.md
 
   build:
     needs: prepare
@@ -101,65 +146,50 @@ jobs:
           - os: ubuntu-latest
             platform: linux
             venv_python: .venv/bin/python3
+            venv_pyinstaller: .venv/bin/pyinstaller
+            add_data_sep: ":"
           - os: windows-latest
             platform: windows
             venv_python: .venv/Scripts/python.exe
+            venv_pyinstaller: .venv/Scripts/pyinstaller.exe
+            add_data_sep: ";"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: astral-sh/setup-uv@v10.2.0
 
-      - name: Build the venv for this platform
+      # Build-tool venv only, torn down with the runner; PyInstaller's own output below is what ships.
+      - name: Install build dependencies
         shell: bash
         run: |
           uv venv .venv --managed-python
-          uv pip install -r requirements.txt --python "${{ matrix.venv_python }}"
+          uv pip install -r requirements.txt pyinstaller --python "${{ matrix.venv_python }}"
 
-      # A uv-managed venv's interpreter is a symlink into uv's own Python cache: an absolute path
-      # on *this* runner, even with --relocatable, which only fixes the activation scripts, not
-      # this. --managed-python keeps it from ever being a system interpreter, whose real path
-      # could resolve somewhere like /usr and make RUNTIME_ROOT below very wrong; the guard below
-      # checks the directory's own name rather than its location, since setup-uv relocates the
-      # cache under $RUNNER_TEMP rather than uv's own default path. python-build-standalone builds
-      # (what uv manages) are relocatable by design, so bundling the whole runtime alongside the
-      # venv and re-pointing the symlink at it, relatively, makes the package self-contained.
-      # Windows venvs normally copy python.exe rather than symlink it, so this is a no-op there;
-      # the -L check is what makes that safe either way.
-      - name: Make the venv self-contained
+      # --onedir avoids onefile's self-extraction lag. export_presets_template.cfg is the only
+      # genuinely-bundled resource (bundled_resource() expects it at the bundle root); ui/ and
+      # modpacks/ ship alongside the exe instead, since modpacks/ has to stay real editable files.
+      # argparse/struct back combine.py's dynamic load, invisible to PyInstaller's static analysis.
+      - name: Build the app with PyInstaller
         shell: bash
         run: |
-          INTERP="${{ matrix.venv_python }}"
-          if [ -L "$INTERP" ]; then
-            RUNTIME_BIN=$(readlink -f "$INTERP")
-            RUNTIME_ROOT=$(dirname "$(dirname "$RUNTIME_BIN")")
-            case "$(basename "$RUNTIME_ROOT")" in
-              cpython-*) ;;
-              *) echo "RUNTIME_ROOT '$RUNTIME_ROOT' isn't a uv-managed Python install, refusing to copy it" >&2; exit 1 ;;
-            esac
-            timeout 90 cp -r "$RUNTIME_ROOT" ./python-runtime
-            INTERP_NAME=$(basename "$RUNTIME_BIN")
-            INTERP_DIR=$(dirname "$INTERP")
-            rm "$INTERP"
-            ln -s "../../python-runtime/bin/$INTERP_NAME" "$INTERP"
-            if [ -L "$INTERP_DIR/python" ]; then
-              rm "$INTERP_DIR/python"
-              ln -s "$(basename "$INTERP")" "$INTERP_DIR/python"
-            fi
-          fi
+          "${{ matrix.venv_pyinstaller }}" loader/app.py \
+            --name TCV_Loader \
+            --onedir --windowed --noconfirm \
+            --distpath dist \
+            --add-data "loader/loader_core/export_presets_template.cfg${{ matrix.add_data_sep }}." \
+            --hidden-import argparse \
+            --hidden-import struct
 
-      # Just the app plus its now-self-contained .venv (and python-runtime/,
-      # if the previous step created one), not .cache/ (gdRE/Godot,
-      # fetched on first real install, not needed to launch the app), not
-      # dev/ (maintainer-only), not .git/install_logs/work/.
+      # Not .cache/ (gdRE/Godot, fetched on first real install, not needed to launch the
+      # app), not dev/ (maintainer-only), not .git/install_logs/work/.
       - name: Package the release zip
         id: package
         shell: bash
         run: |
           NAME="${{ needs.prepare.outputs.base_name }}-${{ matrix.platform }}"
           mkdir "$NAME"
-          cp -r .venv loader modpacks run.sh run.bat requirements.txt README.md LICENSE "$NAME/"
-          [ -d python-runtime ] && cp -r python-runtime "$NAME/"
+          cp -r dist/TCV_Loader/. ui modpacks README.md LICENSE "$NAME/"
           python3 -c "import shutil; shutil.make_archive('$NAME', 'zip', '.', '$NAME')"
           echo "zip_name=$NAME.zip" >> "$GITHUB_OUTPUT"
 
@@ -184,4 +214,4 @@ jobs:
           gh release create "${{ needs.prepare.outputs.base_name }}" artifacts/*.zip \
             --repo "$GITHUB_REPOSITORY" \
             --title "${{ needs.prepare.outputs.base_name }}" \
-            --notes "Automated release for game version ${{ needs.prepare.outputs.game_version }}."
+            --notes-file artifacts/notes.md

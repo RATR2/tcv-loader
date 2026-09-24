@@ -24,7 +24,9 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+from loader_core import repo_root
+
+REPO_ROOT = repo_root()
 
 SUPPORTED_VERSIONS = ["0.5.1", "0.5.2", "0.5.3"]
 GAME_VERSION = " or ".join(SUPPORTED_VERSIONS)
