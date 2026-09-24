@@ -1,11 +1,3 @@
-"""Desktop app shell.
-
-Renders loader/ui/ inside a native window via pywebview (WebKit on
-Linux/macOS, WebView2/Edge on Windows), with no local server and no
-browser tab involved. Api's public methods below become callable from that
-page's JavaScript as window.pywebview.api.<method>(...); pywebview handles
-the marshalling and returns a Promise on the JS side for each call.
-"""
 from __future__ import annotations
 
 import base64
@@ -26,13 +18,6 @@ UI_INDEX = REPO_ROOT / "ui" / "index.html"
 
 
 class Api:
-    """Everything here runs off pywebview's UI thread, so blocking (file I/O,
-    the combiner dry run) inside a call is fine, since each call is already async
-    on the JS side. start_install is the exception: a real install takes
-    minutes, so it spawns its own thread and returns immediately, pushing
-    progress and the final result to the page via window.evaluate_js rather
-    than making the initial call block until the whole thing finishes.
-    """
 
     def __init__(self) -> None:
         self._window: webview.Window | None = None
@@ -54,7 +39,6 @@ class Api:
         pack = self._packs.get(pack_id)
         if pack is None:
             raise ValueError(f"unknown modpack id: {pack_id}")
-        # Forced packs go in regardless (combine.py's load_order()); belt-and-suspenders against a JS side that didn't actually disable the checkbox.
         pack.enabled = pack.forced or bool(enabled)
         if pack.enabled and pack.priority == 0:
             pack.priority = 1 + max(
@@ -189,7 +173,7 @@ def main() -> None:
         min_size=(700, 500),
     )
     api._window = window
-    webview.start()
+    webview.start(gui="qt")
 
 
 if __name__ == "__main__":

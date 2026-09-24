@@ -1,5 +1,5 @@
 certifi>=2024.2.2
 truststore>=0.9.1
 pywebview>=5.0
-qtpy; sys_platform == "linux"
-PySide6; sys_platform == "linux"
+qtpy
+PySide6
