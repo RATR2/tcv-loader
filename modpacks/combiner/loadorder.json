@@ -1,0 +1,20 @@
+{
+  "meta": {
+    "description": "Lower priority numbers load first.",
+    "allow_duplicates": false
+  },
+  "modpacks": {
+    "DubPack Playback": {
+      "priority": 1,
+      "dir": "Audio-Playback-dub/dubpackaudplayback.json"
+    },
+    "Mod Menu": {
+      "priority": 0,
+      "dir": "ModMenu/modmenu.json"
+    },
+    "TCV-Multiplayer": {
+      "priority": 2,
+      "dir": "Multiplayer/multiplayer.json"
+    }
+  }
+}

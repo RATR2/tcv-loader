@@ -1,750 +1,105 @@
-# The Choicer Voicer Online Multiplayer
+<div align="center">
 
-<p align="center">
-  <a href="https://discord.gg/HYhh6V4NZk">
-    <img src="https://img.shields.io/badge/Discord-join%20the%20server-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join the Discord" height="40">
-  </a>
-  &nbsp;
-  <a href="https://ko-fi.com/appolodev">
-    <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Buy me a coffee on Ko-fi" height="40">
-  </a>
-  &nbsp;
-  <a href="https://ko-fi.com/appolodev/goal?g=0">
-    <img src="https://img.shields.io/badge/Ko--fi-see%20the%20goal-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Ko-fi goal" height="40">
-  </a>
-</p>
+# TCV Modloader
 
-<p align="center">
-  <em>Stuck on the install, or short of people to play with?
-  <a href="https://discord.gg/HYhh6V4NZk">The Discord</a> is the place to ask.</em>
-</p>
+[![Issues](https://img.shields.io/github/issues/RATR2/TCV-Loader?style=for-the-badge&logo=github)](https://github.com/RATR2/TCV-Loader/issues)
+[![Stars](https://img.shields.io/github/stars/RATR2/TCV-Loader?style=for-the-badge&logo=github)](https://github.com/RATR2/TCV-Loader/stargazers)
+[![Game](https://img.shields.io/badge/game-0.5.1%20%7C%200.5.2%20%7C%200.5.3-blue?style=for-the-badge)](#supported-game-builds)
+[![Platforms](https://img.shields.io/badge/platforms-windows%20%7C%20linux-blue?style=for-the-badge)](#supported-game-builds)
+[![Status](https://img.shields.io/badge/status-in--development-yellow?style=for-the-badge)](#roadmap)
 
-<p align="center">
-  <em>This mod is free and always will be. If it got your group playing together,
-  a coffee helps me keep working on it.</em>
-</p>
+> Most Godot mods mean hand-editing a decompile and hoping your changes still line up after the next game update.
+> TCV Loader flips that around: mods are patches with a manifest, merged fresh against your own game copy every single build.
 
-Play The Choicer Voicer with up to 4 people online. Everyone records on their own
-mic on their own pc and it all stays in sync, so one person performs at a time,
-the host clicks through the dialogue for everybody, and the scores get worked out
-in one place so you're not all sat looking at different numbers.
+If you find any issues, please report them [here](https://github.com/RATR2/TCV-Loader/issues)
 
-Works for the normal game show and for dub mode, where you pick which character
-you're dubbing and then watch the finished thing together.
+</div>
 
-**Windows 0.5.1, 0.5.2 dev-2, and 0.5.3. You need to own the game.**
+---
 
-## contents
+## What is this
 
-- [Video tutorial](#video-tutorial)
-- [Quick start](#quick-start)
-- [You need to own the game](#you-need-to-own-the-game)
-- [Installing](#installing)
-  - [Command line options](#command-line-options)
-- [Setting up a game](#setting-up-a-game)
-- [Playing](#playing)
-- [Community packs (experimental)](#community-packs-experimental)
-- [Is this a virus](#is-this-a-virus)
-- [Troubleshooting](#troubleshooting)
-- [Why you cant just drop files in](#why-you-cant-just-drop-files-in)
-- [How it works](#how-it-works)
-- [Working on it](#working-on-it)
-- [Rough edges](#rough-edges)
-- [Credits](#credits)
+TCV Loader builds a modded copy of *The Choicer Voicer* from a game `.exe`/`.x86_64` you already own. Point it at your copy, tick the mods you want, hit **Install & Launch**: it decompiles your game, merges whatever's enabled into one patch set, applies it, and exports a working modded build next to itself. No game files ship in this repo, and nothing gets downloaded on your behalf except the free, official tools needed to rebuild your own copy: gdRE Tools and Godot itself.
 
-## video tutorial
+It comes with three mods out of the box: **TCV-Multiplayer** (play the normal game show or dub mode with up to 4 people online), **DubPack Playback** (hear your own take played back after "Hear clip again"), and **Mod Menu** (an in-game button listing whatever's actually loaded in the build you're running).
 
-If you'd rather watch someone do it than read all this, there's a walkthrough of
-installing it and getting a game going:
+## Why not just patch the decompile by hand
 
-<p align="center">
-  <a href="https://youtu.be/YoHYlGWCE_g">
-    <img src="https://img.youtube.com/vi/YoHYlGWCE_g/maxresdefault.jpg" alt="Watch the install and setup walkthrough on YouTube" width="640">
-  </a>
-</p>
+That's genuinely how this started: a single script that decompiled the game and applied one hardcoded set of patches. It worked, until there was a second mod:
 
-<p align="center">
-  <a href="https://youtu.be/YoHYlGWCE_g">https://youtu.be/YoHYlGWCE_g</a>
-</p>
+- **One mod's patch doesn't know another mod exists.** Two mods editing the same file by hand means manually splicing diffs together every time either one changes.
+- **A silent conflict is worse than no merge at all.** The combiner decomposes every patch to the exact original lines it touches; two mods disagreeing about a line (not just overlapping, actually disagreeing) fails the build with both mods named and the line quoted, instead of quietly producing whichever one applied last.
+- **A single "the mod" script can't express "install these three, not that one."** The loader treats every mod as independent and optional, gated by which game version it declares support for.
+- **A decompile drifts.** The exact same nominal game version can still change a line here and there between builds (this happened more than once building this out). Patches are re-applied to a fresh decompile every run rather than shipping a pre-patched project, so a drifted line is a clear "hunk does not match" instead of a silent corruption.
 
-## quick start
-
-1. Buy the game: https://yeahmaybe.itch.io/the-choicer-voicer
-2. Download this repo as a zip and unzip it anywhere. **Unzip it properly, don't
-   run Install.bat from inside the zip**, see
-   [troubleshooting](#troubleshooting).
-3. Double click **Install.bat** and wait a few minutes. It'll ask you to
-   install python first if you haven't got it.
-4. For the normal game show, copy the host's voice packs to everyone else (see
-   [setting up a game](#setting-up-a-game)). Dub mode can send its selected pack
-   from the host when somebody is missing it.
-5. Launch the new exe and click **ONLINE** in the top right of the main menu
-   (or press **F9**), then host or join.
-
-## you need to own the game
-
-There's no game files in here at all. No code, no assets, no exe. It's just my
-netcode, a few patches, and a script that builds the mod out of the copy you
-already bought.
-
-The installer never downloads the game. It takes your copy, on your pc, patches
-it and builds you a new exe.
-
-## installing
-
-Download the zip, unzip it wherever, double click **Install.bat**. That's pretty
-much all of it.
-
-It goes looking for your game on its own, it checks itch, downloads and
-desktop. If it turns up a few copies it just asks which one you want. If it
-can't find anything you can drag your game exe onto Install.bat instead, or
-paste the path in when it asks you.
-
-You need python installed. If you haven't got it the installer offers to get it
-through winget, which is Microsoft's own package manager and already on your pc,
-or you can grab it yourself from [python.org](https://www.python.org/downloads/)
-and tick "Add python.exe to PATH" on the first screen. Say yes to winget and it
-carries straight on in the same window afterwards, no need to close it and
-double click Install.bat a second time.
-
-Before it touches anything else it also checks whether Windows Defender is
-running, and if so offers to add a one-time exclusion for the folder it's
-building in -- that's the single most common way a build gets deleted out from
-under the installer partway through (see [the export produced no
-file](#troubleshooting) below). Say yes and it's one UAC prompt, then that
-whole class of failure just doesn't happen. Say no and it builds anyway; you
-get the same offer again afterwards if Defender does end up taking it.
-
-An earlier version downloaded a copy of python itself and ran it. That's exactly
-what a malware dropper does and antivirus started flagging the download, so it
-doesn't do that any more. See
-[is this a virus](#is-this-a-virus).
-
-It downloads about 140mb of tools ([gdRE](https://github.com/GDRETools/gdsdecomp)
-and [Godot](https://godotengine.org), both free), builds the mod, and leaves
-`TheChoicerVoicer-Multiplayer-1.1.9.exe` sat in the same folder. Takes a few
-minutes. Run it again later and it reuses the downloads so it's quicker the
-second time.
-
-The version is on the end of the name on purpose. Everyone in a lobby has to be
-on the same build, so when a join goes wrong the first question is always "which
-one are you running" — and now the answer is on the exe you launched rather than
-buried in a menu. Old builds are left alone, so you can keep one around to play
-with somebody who hasn't updated yet.
-
-When it finishes it opens my Ko-fi page in your browser. `--no-kofi`
-turns that off.
-
-Your saves and packs don't get touched. The modded exe reads the same
-`%APPDATA%\YeahMaybe\ChoicerVoicer` folder as the normal one, so just keep both
-exes and launch whichever you fancy.
-
-Everyone playing needs to run the installer themselves. Don't send people the
-built exe, that's the whole game and it's not yours to hand out. Send them this
-repo instead.
-
-### command line options
-
-If you'd rather use a terminal:
+## Quick start
 
 ```
-python install_mod.py "C:\path\to\TheChoicerVoicer_0-5-1 stable.exe"
+./run.sh          # Linux/macOS
+run.bat           # Windows
 ```
 
-| Flag | What it does |
-| --- | --- |
-| `-o PATH` | where to put the modded exe |
-| `--no-kofi` | don't open the Ko-fi page when the build finishes |
-| `--godot PATH` | use a Godot 4.4.1 you've already got |
-| `--gdre PATH` | use a `gdre_tools.exe` you've already got |
-| `--keep-work` | keep the decompiled project instead of binning it |
-| `--project DIR` | patch a decompiled project and stop, for modders |
-| `--zip-logs` | bundle this tool's logs and the game's own logs into a zip on your Desktop and exit — no game exe needed |
+Either one sets up a `.venv` (using [uv](https://astral.sh/uv) if it's on your PATH, falling back to the standard library's `venv` + `pip` if not), installs dependencies into it, and launches the desktop app. No separate command-line installer; this is the only way in.
 
-## setting up a game
+## Project structure
 
-Everybody needs the clips used by the normal game show. Scores get worked out
-against those clips, so copy the host's voice packs before you play that mode.
+| Path | What |
+|---|---|
+| `run.sh` / `run.bat` | Set up (or repair) a `.venv` and launch the app. Safe to run every time. |
+| `loader/app.py` | The desktop app: a pywebview window, and the API it exposes to the page. |
+| `loader/ui/` | The page itself: modpack list, install panel, no server involved. |
+| `loader/loader_core/engine.py` | The actual engine: downloading gdRE/Godot, decompiling, patching, exporting. No notion of "the mod"; that's the layer above. |
+| `loader/loader_core/install.py` | Drives `engine.py` and calls `modpacks/combiner/combine.py` to merge whatever's enabled, reporting progress through a callback instead of stdout. |
+| `loader/loader_core/modpacks.py` | Discovery, enable/disable, and reorder state for the GUI. |
+| `modpacks/` | One folder per mod: a manifest (`meta.json`-style) plus its `patches/`. `modpacks/combiner/` merges whichever ones `loadorder.json` enables into one patch set for a given game version. |
+| `dev/tools/` | Maintainer-only scripts: reconstruct a synthetic project from patches and run the pipeline against it with no real game copy needed, split a legacy single-file patch into per-file patches, round-trip-verify a patch. Not needed to build or play. |
+| `dev/devtest/` | A throwaway Godot peer project used while developing the netcode. |
 
-Copy the host's
+## Writing a mod
 
-```
-%APPDATA%\YeahMaybe\ChoicerVoicer\game\packs_voice
-```
+A mod is a folder under `modpacks/` with a manifest and a `patches/` directory:
 
-folder over to everyone else, into the same place. Paste that path straight into
-explorer's address bar if you can't find it.
-
-The lobby lists anything it spots as different, and the normal game show would
-rather flat out refuse to start than let you desync halfway through a round.
-
-Dub mode handles this differently. When the host presses Play on a dub pack,
-they first see its size and an **experimental sharing** warning. Nothing is
-offered until the host explicitly enables it. Anyone without that exact pack is
-then shown its name, size and the same warning, and chooses whether to download
-it from the host. Large transfers may be slow or cause disconnects on weaker
-connections. **Only accept packs from a host you trust.** Declining does not kick
-them or install anything; the Download button remains available if they change
-their mind. The host sees who already has it, who declined, and each download's
-progress. **Begin dub** stays disabled until every connected player has verified
-the pack.
-
-Received packs live in `%APPDATA%\YeahMaybe\ChoicerVoicer\multiplayer_pack_cache`
-and do not appear in the normal pack selector. A completed pack is reused by its
-content hash the next time it is selected, while an interrupted download resumes
-from the files already on disk.
-
-Testing two copies on one computer normally finds the same installed packs and
-skips the transfer. Before enabling sharing, the host can tick **Force fresh
-download for testing**. That offer ignores the client's installed and cached
-copy, but still requires the client to accept it. If the forced transfer is
-interrupted, Retry resumes the new partial download instead of clearing it again.
-
-Everyone also needs the same build of the mod. If someone installed an older
-version they get kicked with a message saying so. Just get them to run the
-installer again.
-
-On the networking side it runs on UDP port 7654. Over the internet the host has
-to forward that port on their router. If you'd rather not be messing about in
-there, ZeroTier, Tailscale, Radmin and Hamachi all work, you just connect on the
-virtual IPs instead. On Hamachi that's the IPv4 address shown next to the host's
-name, not their real one. 2 to 4 players.
-
-## playing
-
-1. Launch the modded exe. There's an **ONLINE** button in the top right of the
-   main menu, that opens the online lobby. **F9** does the same thing. If you
-   can't see the button, you're running your original exe and not the modded
-   one.
-2. Host hits **Host**. Everyone else types the host's IP in and hits **Join**.
-3. Once everyone's showing in the list, host hits **Start (choose clips)** for the
-   normal game show, or **Start (dub mode)** and picks a pack. Anyone missing the
-   dub pack accepts the download; the host begins once everybody is ready.
-
-### picking who you dub
-
-Dub mode opens on a casting screen. Tick the characters you want and everyone
-sees the list fill in as people choose. Every clip goes to whoever took that
-character, so if you take Tuco and someone else takes Heisenberg you each get
-your own lines instead of just alternating.
-
-Nothing has to line up neatly. Clips for a character nobody picked, and clips the
-pack doesn't tag at all, get shared out evenly. If two of you pick the same
-character the one higher up the list gets those clips, and the screen warns you.
-The host can hit **Split the cast for us** to deal the characters out, and starts
-everyone with **Begin dub**.
-
-Packs that don't tag their clips with characters still work, they just split
-evenly the way they always did.
-
-The host drives everything. They click through the dialogue, the replays and the
-end of round menu for the whole table so nobody ends up out of step. When it's
-your turn to perform your mic opens on your machine and only yours. Everyone else
-just watches and hears your take once it's uploaded.
-
-Once the last clip is done everyone lands on the results screen, and **Watch**
-plays the finished dub for the whole table at once. Whoever presses it starts it
-for everybody — but not instantly. Scoring the clips takes as long as the slowest
-machine takes, so the press waits until everyone is actually sat there before it
-starts anything, and the person who pressed it gets a "waiting for so-and-so"
-note while it does. **Stop** goes out to everyone the same way.
-
-When the pack's finished you all get put back in the lobby and the host can pick
-another one. No need to restart anything.
-
-## community packs (experimental)
-
-The mod now has a native **Community Packs** screen for Dub Mode submissions on
-GameBanana. Open **COMMUNITY PACKS** directly from the normal main menu, or use
-**Browse community packs** in the online screen. The mod also tries to add it to
-Extras when that screen's layout can be identified safely. This is an in-game
-catalog, not an embedded web page: it fetches GameBanana's public JSON, the
-selected preview image and, only after you queue it, the selected archive.
-
-Pick a submission, choose one of its files and press **Add to download queue**.
-Downloads run one at a time so several 200–450 MB archives do not fight over the
-same connection. You can queue more, cancel or retry them from **Downloads**,
-then close the browser while the queue continues under the game's persistent Net
-autoload.
-
-By default, a newly queued job waits while you are in online multiplayer. The
-Downloads panel has a persistent **Allow downloads to start during online
-multiplayer** option for players who prefer otherwise. A large HTTPS transfer can
-still increase latency by saturating the connection even on a fast line, so the
-option defaults off. Turning it off never interrupts the active download; it only
-makes the next queued item wait until you leave online play.
-
-A successful install goes into the game's normal `packs_voice` folder, so it is
-available to the game and to host pack sharing. If a pack finishes while a pack
-selection screen is already open, leave and reopen that selector so the base
-game scans its folders again. Canceling an active download removes its partial
-file; retrying currently starts that archive from zero rather than resuming it.
-The browser's **Installed** view lists every pack installed through this feature,
-including its creator, folder, install date and extracted size when available.
-You can uninstall it there without finding the GameBanana submission again.
-Only folders carrying this installer's matching manifest appear in the list or
-can be removed; manually installed packs remain untouched.
-
-For now, the installer accepts ZIP files only. RAR support needs a separate
-archive reader because Godot cannot inspect it itself; the browser explains this
-and prefers a ZIP automatically when a submission offers both formats. Before
-moving anything into `packs_voice`, it requires GameBanana's analysis and
-antivirus checks to have passed, verifies the reported file size and MD5, checks
-the ZIP directory for traversal paths, links, encryption and expansion bombs, and
-extracts only the media, image and metadata formats a dub pack needs. Extraction
-happens in a temporary folder beside `packs_voice`, then the completed directory
-is renamed into place in one operation. Failed installs are removed rather than
-leaving half a pack behind. If an archive puts every file directly at its ZIP
-root, the installer wraps those files in a generated pack folder instead of
-spilling them directly into `packs_voice`.
-
-Those checks reduce the attack surface; they do not make arbitrary community
-media trustworthy. A malicious file could still target a bug in a media decoder.
-Only install packs from creators you trust. Content-rated submissions are hidden
-unless you explicitly enable them.
-
-An installed submission has an **Uninstall** button. It only removes a direct
-child of `packs_voice` carrying the matching manifest written by this installer;
-manually installed folders are deliberately left alone. There is no update flow
-yet. RAR and 7z archives still need to be installed manually.
-
-## is this a virus
-
-No, and you don't have to take my word for it, everything's readable right here.
-
-Some people's antivirus flags the download as `Trojan:Script/Wacatac.H!ml`. The
-`!ml` on the end means a machine learning guess rather than an actual match
-against known malware, and that particular name is one of the most common false
-positives going.
-
-It was my fault. `Install.bat` used to download a copy of python off the internet
-and run it if you didn't have one. That's convenient, and it's also exactly the
-shape of a malware dropper: a batch file quietly launching powershell, pulling a
-zip off the web and running the exe inside it. Antivirus doesn't know why you're
-doing it, only that you are. That code is gone now, the launcher doesn't download
-or run anything by itself.
-
-If you want to check for yourself:
-
-- The whole thing is 29 text files, about 370kb. Open `Install.bat` and
-  `install_mod.py` in notepad and read them, that's all there is.
-- The installer does download [Godot](https://godotengine.org) and
-  [gdRE](https://github.com/GDRETools/gdsdecomp) and run them, because it needs
-  them to rebuild the game. Both are well known open source tools and the urls
-  are sat in plain sight at the top of `install_mod.py`, pointing at their
-  official GitHub releases.
-- Browsers warn about new files nobody's downloaded before, separately from any
-  antivirus. That one goes away on its own as more people grab it.
-
-If your antivirus still complains, please report it to the vendor as a false
-positive rather than just turning your antivirus off. That fixes it for the next
-person too.
-
-## troubleshooting
-
-If nothing here covers it, send me the logs rather than a description. Double
-click **`Zip Diagnostics.bat`** and it puts a zip with everything useful --
-the installer's own logs plus the game's -- on your Desktop, ready to attach to
-a [GitHub issue](https://github.com/TypeOneAppolo/tcv-multiplayer-mod/issues).
-If the installer itself fails, it now does this for you automatically and
-tells you where the zip landed. **Where are the logs**, at the bottom of this
-section, has the details for doing it by hand instead.
-
-**"can't open file ... install_mod.py: [Errno 2] No such file or directory"**,
-and the path it names has something like `Rar$DIa1234.5678.rartemp` or
-`Temp\7zO8B...` in it. You ran `Install.bat` from inside the zip or rar without
-unpacking it first. Double clicking a file inside an archive makes your archive
-program copy that one file out to a temp folder and run it there on its own, so
-`install_mod.py` and the `mod` folder never came with it.
-
-Right click the download, **Extract All** (or **Extract Here** in WinRAR), put it
-somewhere normal like your Desktop, and run `Install.bat` out of the folder that
-makes. The folder should have `Install.bat`, `install_mod.py` and a `mod` folder
-sat in it together.
-
-**It can't find my game.** Drag your game exe onto `Install.bat`, or paste the
-full path when it asks. It only auto checks itch, downloads and desktop.
-
-**The installer stops with a "hunk does not match" error.** Your game isn't one
-of the versions the patches are written against. It handles Windows 0.5.1,
-0.5.2 (dev-2, standard and compatibility builds), and 0.5.3, and it tells you
-which one it thinks you gave it.
-
-**Antivirus flags the download.** See [is this a virus](#is-this-a-virus).
-
-**Windows says the modded exe it built is unsafe.** That one's separate. It's an
-unsigned exe that got built on your machine a minute ago, so nothing vouches for
-it yet. Same thing happens to anybody building a Godot game.
-
-**"the export produced no file".** Godot built it and something deleted it out
-from under the installer, and that something is nearly always Defender. A fresh
-unsigned Godot exe is one of its favourite false positives, and it grabs the file
-the instant the build gets renamed to `.exe`, so Godot never sees anything go
-wrong. The installer now says so, prints the detection out of Defender's own log
-when it can find it, and waits while you sort it. Open PowerShell as
-administrator and allow the folder you're building in:
-
-```powershell
-Add-MpPreference -ExclusionPath "C:\path\to\the\folder"
+```json
+{
+  "meta": {
+    "name": "Your Mod",
+    "id": "your_mod",
+    "author": "you",
+    "description": "what it does",
+    "version": "1.0.0",
+    "image": "icon.png",
+    "game_version": ["0_5_3"]
+  },
+  "patches": ["scenes__gameplay__dub_mode__main__dub_mode.gd.patch"],
+  "injected_code": ["your_mod/*"]
+}
 ```
 
-Then press Enter back in the installer and it builds again, which only takes a
-minute the second time. Take the exclusion off afterwards with
-`Remove-MpPreference -ExclusionPath` if you'd rather not leave it there. If
-Defender already quarantined a copy, release it under Virus & threat protection
-→ Protection history.
+`patches` are unified diffs against the game's decompiled source, named with `__` where the real path has `/`. `injected_code` copies whole new files in (an autoload script, say) rather than editing an existing one. `image` can be a modpack-local file or an `http(s)` URL, shown both in the desktop list and the in-game Mod Menu. Set `"forced": true` in `meta` if a mod should always be installed regardless of what `loadorder.json` says (Mod Menu does this).
 
-**F9 does nothing.** Look for the **ONLINE** button in the top right of the main
-menu and click that instead. If the button isn't there, you're on your original
-exe rather than the modded one — check which file you actually launched, and
-check your shortcut isn't still pointing at the old one.
+## Supported game builds
 
-If the button *is* there but F9 isn't doing anything, it's your keyboard, not the
-mod. On a lot of laptops the top row is media keys unless you hold **Fn**, and
-OBS, Medal and GeForce Experience all like to grab F9 for start/stop recording.
-The button doesn't care about any of that.
+| Size (bytes) | Build |
+|---|---|
+| 211382192 / 211382048 | 0.5.1 compatibility / standard |
+| 199462432 / 208463056 / 208462000 | 0.5.2 dev-2 compatibility / compatibility / standard |
+| 208741456 / 208741312 | 0.5.3 compatibility / standard (Windows) |
+| 214540944 / 214541088 | 0.5.3 compatibility / standard (Linux) |
 
-**My recording plays back silent, but the waveform drew fine.** Open Settings →
-Microphone and re-pick your mic from the dropdown, even if it already looks like
-the right one. The game remembers the mic by name, and if that device has been
-unplugged or renamed since you chose it the saved name goes stale — re-picking it
-writes a live one back. Fixed in 1.1.5 so the mod checks the name before it uses
-it, but re-picking is still worth doing if you're on an older build.
+An exe that isn't one of these still gets tried; it's just flagged as untested rather than rejected.
 
-**Nobody can join me.** First check they're typing the right address. When you
-hit **Host** the lobby now lists every address this machine has and marks the one
-to hand out — if Hamachi or Radmin is running, it's that one, and it is *not* the
-IP a what-is-my-ip page shows you. Most failed joins are people forwarding ports
-that were never the problem.
+## Roadmap
 
-If you're not using a LAN tool, port 7654 UDP needs forwarding to your pc and the
-game needs allowing through your firewall. Try one of the LAN tools above first,
-it's much less hassle and it proves whether the rest of it works.
+Done: the modpack combiner with real conflict detection, the desktop app (mod list, reordering, image support, live build progress), and three working mods across Windows and Linux, 0.5.1 through 0.5.3. Not done yet: a real pass on Windows (everything so far has been built and run on Linux).
 
-**Match won't start, says clips are missing.** Someone hasn't got the voice packs
-the host picked. Copy `packs_voice` over again and make sure it went to the right
-folder.
+## License
 
-**Somebody got kicked for a different mod version.** They're on an older build of
-the mod. Everyone runs the installer again off the same version of this repo.
+[MIT](LICENSE).
 
-**"The host hasn't sent the lobby after 12 seconds."** You're on different builds
-of the mod, and up to v1.1.3 that was the message you got for it no matter what.
-Everyone rebuilds off the same download, all of you, at the same time. Updating
-one person doesn't help and is usually what causes it.
+---
 
-The version check was supposed to catch this and say so. It couldn't. Godot
-doesn't send the name of a network call, it sorts them by name and sends the
-position, so call fifteen means whatever happens to be fifteenth in that build.
-v1.1.3 added one call that sorted tenth and pushed everything below it down a
-place, so a v1.1.2 joiner's "let me in" arrived as a completely different call
-with the wrong number of arguments and got dropped on the floor. The check that
-would have caught the version difference was inside the message that never
-arrived. The host genuinely never heard anyone knock, so it sat there, and the
-joiner sat there being told the host hadn't sent the lobby.
+<div align="center">
 
-Fixed in v1.1.4, and the fix is mostly about never doing this again: the join
-handshake is now pinned to the front of that sorted list where nothing can shift
-it, and it carries its arguments in one bag so their number can't change either.
-Two builds can now always get as far as telling each other what they're running,
-whatever else moves between versions. If they differ you get told which of you is
-behind, on both screens. A v1.1.4 host also gives up on a joiner that never
-completes the handshake and says so on the host's own screen, which is the only
-thing that can help when the other end is too old to be told anything.
+Thanks, R4T Out.
 
-v1.1.4 still can't talk to v1.1.3 or earlier, and there's no fixing that from
-this end. It just fails with the right message now instead of the wrong one.
-
-v1.1.6 closes the last hole in that, on the host's screen. Both ends waited the
-same ten seconds, so whoever gave up first took the connection down and the
-other's explanation never fired -- and about half the time that was the host,
-who saw somebody appear and vanish with nothing said. Now they get told either
-way, and every one of these messages names the build it came from.
-
-v1.1.7 is on protocol 6 and cannot play with v1.1.6 or earlier. Syncing the dub
-watch needed two new calls, which moves every call number after them. It fails
-with the right message on both screens, but everybody does have to rebuild.
-The version is on the exe name now, which is there to make that argument shorter.
-
-v1.1.8 is on protocol 7 and cannot play with v1.1.7 or earlier. Recordings are
-acknowledged as they arrive now, which took another call, and they go over the
-wire compressed, so the audio itself is in a different shape too. Same story:
-right message on both screens, everybody rebuilds.
-
-v1.1.9 is on protocol 8. Dub mode identifies the selected pack by its file
-contents, offers it to anyone missing it, streams accepted downloads through the
-existing ENet connection with a bounded acknowledged window, verifies every file
-with SHA-256, and waits for the whole lobby before starting. The dub start packet
-now contains a content ID and relative clip paths rather than paths from the
-host's disk, so protocol 8 cannot play with earlier builds.
-
-**We were playing fine and then he just got kicked. No error, no crash, he was
-back at the menu.** That was a bug, fixed in v1.1.8, and it's the same 30 second
-ENet timeout as the two above with a different cause. A recording is about a
-megabyte of raw audio per clip, and the mod used to hand the whole lot to the
-network as fast as the game could loop -- roughly 1.4 MB a second offered,
-whatever the link between you could actually carry. On a LAN that's fine. Over
-Hamachi or Radmin it is nowhere near, and ENet doesn't push back: it queues
-everything it's given, keeps resending what doesn't get through, and after about
-thirty seconds of getting nowhere it declares the peer dead and drops it. Nobody
-gets told anything, because as far as either end is concerned the other one
-simply stopped existing.
-
-The sender now waits to be told the audio is arriving. Every chunk is
-acknowledged and it never gets more than 64KB ahead of the slowest listener, so
-the network is only ever holding an amount any working link can shift. The
-recording is compressed first as well, which is lossless and usually takes a
-third or more off it. Both ends show a percentage while a take is in flight
-instead of a caption that never changes.
-
-Being dropped mid show also puts you back in the **online lobby** with a written
-reason now, rather than the main menu with nothing said.
-
-If it still happens: check Hamachi or Radmin shows a solid green dot next to each
-other's names on both machines. A blue or flashing one means it couldn't connect
-you directly and is relaying you through its own server, which is slow enough
-that this is worth fixing before anything else.
-
-**He was on clip 5 and I was still stuck on clip 1.** Same bug, same fix. Your
-end was waiting on a recording that never arrived, while his end never waited for
-anything and carried straight on. Now the person recording doesn't move to the
-next clip until everyone has the last one, and you can see the take arriving
-while it does.
-
-**Someone takes ages over one clip and gets skipped.** Fixed in v1.1.8. There was
-one flat 60 second limit, and it couldn't tell "they're still recording" apart
-from "the take stopped arriving". Recording now has as long as it takes; a
-transfer that genuinely goes quiet is given 45 seconds and then skipped.
-
-**The joiner sees an empty lobby, no host name, a dead Ready box, and gets
-dropped after about half a minute.** That was a bug, fixed. The lobby used to
-send everyone the full file listing of every voice pack they owned, which ran to
-hundreds of kilobytes, and over a VPN link it never finished arriving. ENet gives
-up on a peer after exactly 30 seconds of that, which is where the timing came
-from. It now sends a clip count and a checksum per pack instead, a couple of
-kilobytes. Everyone needs to run the installer again to pick this up. That last
-part isn't optional: older builds were meant to get kicked with a message saying
-so, and it turned out they couldn't be told anything at all. See "the host hasn't
-sent the lobby" below.
-
-**The host presses start and goes into the match, but the joiner sits on the
-online match screen and gets dropped about half a minute later.** That was a bug,
-fixed after v1.1.1. When the host started, the joiner loaded the whole pack in
-one go on its main thread, so it stopped answering the host for as long as that
-took. ENet gives up on a peer that has gone quiet for 30 seconds, which is where
-the timing came from, and the frozen window carried on showing the lobby the
-whole time, which is why it looked like nothing had happened. The joiner now
-loads a clip at a time and keeps answering while it does, tells you it's loading,
-and neither end gives up on the other before 90 seconds. Rebuild with the
-installer to pick this up. A rebuilt joiner is fixed even if the host is still on
-an older build, and vice versa, so you don't have to do it all at once.
-
-**The lobby says our voice packs aren't identical.** It compares a checksum of
-the clip file names inside each pack, so it means the clips genuinely differ. It
-tells you the clip count each of you has for that pack, which is normally enough
-to spot which. Usual causes are one of you unzipping a pack one level deeper than
-the other, or a download that didn't finish. It's only a warning, you can start
-anyway, and it only matters if the host picks clips out of that pack.
-
-**It used to say that when our packs were fine.** Fixed after v1.1.2. Packs were
-matched up by their folder name, so the same pack under `SML - Mushroom Pizza` on
-one machine and `sml_-_mushroom_pizza` on another looked like two packs neither of
-you had. Worse, the joiner then got thrown back to the menu when the host started,
-over clips it was holding the whole time. Packs are matched on what's inside them
-now, so name the folders whatever you like. Backing tracks and the dub recordings
-the game writes itself no longer count towards the clip totals either, they were
-never performed.
-
-**Someone crashed or alt f4'd mid match.** Everyone else carries on after about a
-minute. It won't hang forever waiting for them.
-
-**Where are the logs.** `%APPDATA%\YeahMaybe\ChoicerVoicer\logs\`. Paste that
-into the address bar of any Explorer window and it'll take you straight there.
-Easier: double click **`Zip Diagnostics.bat`** in the mod folder and it grabs
-that whole folder for you, along with the installer's own logs, and puts a zip
-on your Desktop.
-
-**Something's wrong and none of the above covers it.** Send me the logs, not a
-description. Double click `Zip Diagnostics.bat` — or run
-`install_mod.py --zip-logs` if you're doing this from a command line — and it
-writes `tcv-diagnostics-<date>-<time>.zip` to your Desktop with the game's
-logs, the installer's own logs, and a note on what's what. Get **both** ends
-of a multiplayer problem this way — the *host's* zip and the *joiner's*, from
-the same attempt — and put them on a
-[GitHub issue](https://github.com/TypeOneAppolo/tcv-multiplayer-mod/issues) or
-the [GameBanana page](https://gamebanana.com/mods/702231). Everything the mod
-does is in there with `[NET]` in front of it, and one pair of logs is usually
-enough to say exactly what went wrong. A description on its own almost never is:
-"we couldn't join" looks identical from the outside whether it's a firewall, a
-mistyped address, or the two of you being on different builds, and the logs tell
-those apart in seconds.
-
-## why you cant just drop files in
-
-Fair question because that's how most mods work. Problem is Godot games are one
-exe with everything packed inside them, and this one's got the pack baked into
-the exe rather than sat next to it as a `.pck`. Godot only bothers looking for
-loose override files when there's no pack inside the exe, so anything you drop
-next to it just gets ignored. The game never even reads it.
-
-And the scripts inside that pack are compiled down to bytecode anyway, they're
-not text, so there'd be nothing to edit even if you did crack it open.
-
-So the only way is rebuilding the exe, which is what the installer does. Upside
-is it keeps everything above board, nobody's passing game files around and
-everyone builds from the copy they paid for.
-
-## how it works
-
-The base game is already turn based so this didn't need loads. A contestant's
-score comes entirely out of three small byte arrays of waveform data, so there's
-no realtime state to sync at all. The mod just has to agree whose turn it is,
-send one performance per turn, and stop everyone drifting apart between phases.
-
-- ENet client/server, host is authoritative and always slot 0.
-- Recorded takes get chunked up, sent to everyone, and fed into the waveform like
-  they'd been recorded on that machine.
-- Scoring happens on the host then gets published out, so float rounding can't
-  give two people different leaderboards.
-- Phase barriers hold everyone at each stage of a round, with timeouts so one
-  person crashing can't freeze the whole table.
-- Every show carries a generation stamp. Round state is keyed by round number and
-  contestant slot and both of those restart at zero, so without it the leftovers
-  of a finished match look exactly like a fresh one.
-- The host works out who dubs which clip once and sends the whole list when the
-  dub starts. Everyone could work it out themselves from the same picks, but then
-  a late change would quietly give two people different answers for one clip.
-- Watching the finished dub is a request to the host, not a local action. The dub
-  itself runs in lockstep so everyone reaches the last clip together, but the
-  results screen behind it scores every clip on a thread and takes as long as the
-  machine takes. Pressing Watch used to start the presser's video a second or
-  more ahead of everyone else's, and on the ones still building that screen it
-  then got painted straight over. Now every peer says when it's ready, the host
-  holds the press until they all have, and one broadcast starts the lot. A watch
-  that still lands early is kept and applied on arrival rather than dropped.
-- The join handshake sits at the front of the sorted list of network calls and
-  takes one dictionary, so its number and its shape both stay put no matter what
-  else gets added later. Godot addresses calls by position in that list, so
-  anything else would mean two builds losing the ability to tell each other what
-  they are, which is the one conversation that has to work when they differ.
-- Voice packs are compared by a clip count and a checksum per pack. Sending the
-  file names was hundreds of kilobytes on a normal install, and a reliable packet
-  that can't get across costs you the peer 30 seconds later. The pack summaries
-  also travel separately from the roster, which gets resent every time anybody
-  ticks Ready.
-- Recordings are compressed, chunked, and acknowledged chunk by chunk, and the
-  sender never gets more than 64KB ahead of the slowest listener. It's the same
-  30 second rule again from the other direction: ENet queues whatever you hand it
-  and gives up on the peer when it can't shift it, so the fix is to stop handing
-  it more than the link can carry. It costs nothing on a LAN, where the
-  acknowledgements come back inside a frame, and it's the difference between
-  working and not over a relayed VPN. A listener that stops acknowledging
-  altogether is dropped from the wait after 45 seconds rather than being allowed
-  to hold the person recording up.
-- Waiting on somebody else's take uses two clocks, not one. Nothing heard yet
-  means they're still recording, which can take as long as they like; a transfer
-  that started and went quiet means the link died, and that gets 45 seconds. One
-  combined limit couldn't tell those apart and skipped people for being slow.
-- Dub packs use a separate transfer node and reliable channel so adding its calls
-  cannot disturb the name-sorted join handshake. The manifest itself is paged;
-  pack files are streamed in 24KB chunks with at most 96KB unacknowledged per
-  client. Clients write straight to a resumable cache, reject unsafe paths and
-  executable formats, verify SHA-256 before reporting ready, and never hold a
-  whole video in memory.
-
-What's in `mod/`:
-
-```
-mod/net/net_manager.gd            all the netcode, one autoload
-mod/net/pack_sync.gd              consent, cache and host-to-client dub packs
-mod/net/gamebanana_client.gd      GameBanana catalog and response normalization
-mod/net/community_pack_browser.gd native community catalog screen
-mod/net/community_pack_installer.gd staged, validated ZIP installation
-mod/net/community_pack_queue.gd    background queue, cancellation and retry
-mod/net/lobby.gd                  the lobby screen, built in code
-mod/net/dub_character_picker.gd   the casting screen, built in code
-mod/net/_selftest.gd              compiles every script in the project
-mod/net/_nettest.gd               headless host/client smoke test
-mod/patches/common/*.patch        edits that apply to every version
-mod/patches/v0_5_1/*.patch        the files that differ on 0.5.1
-mod/patches/v0_5_2/*.patch        the files that differ on 0.5.2
-mod/patches/v0_5_3/*.patch        the files that differ on 0.5.3
-mod/export_presets.cfg            the windows export preset
-```
-
-The installer reads the game's own `GAME_VERSION` constant out of the
-decompiled project (falling back to `config/version` if that's missing) and
-picks the right patch set, so supporting a new build usually means one extra
-folder. The fallback matters: the 0.5.3 patch shipped with `GAME_VERSION`
-bumped but `config/version` left saying "0.5.2", so trusting the project
-metadata alone would have misdetected it. It also fixes a gdRE bug where it
-writes node paths as `$A / B`, which every decompiled build needs sorting
-whether you're modding it or not.
-
-## working on it
-
-```
-python install_mod.py --project path/to/decompiled
-```
-
-That patches a project in place and stops, then you open it in Godot 4.4.1.
-
-The two test scripts aren't autoloads in the committed project. Register one
-temporarily when you want to run it, and never both at the same time, because the
-self test quits the tree the second it finishes.
-
-```
-# compile every script
-godot --headless --path project
-
-# network smoke test, two terminals
-godot --headless --path project -- host
-godot --headless --path project -- client
-```
-
-`_nettest.gd` runs a second show reusing the same contestant slot and barrier
-tags and checks the new take turns up instead of the old one. It also creates a
-throwaway dub pack larger than the transfer window: the client declines it,
-starts it on the second try, interrupts it after bytes reach disk, resumes and
-verifies it, and the host proves it did not continue until that was done.
-
-`devtest/old_peer/` is a project of its own, and needs no copy of the game. It
-connects to a host, says nothing at all, and leaves — which is exactly what a
-build too old to speak the handshake looks like from the host's side. Open a
-lobby, host, then point it at yourself:
-
-```
-godot --headless --path devtest/old_peer -- 127.0.0.1 7654 3
-```
-
-The last number is how long it hangs around. Under 10 seconds it leaves before
-the host's watchdog and over 10 it outstays it; the host should say the same
-thing either way, and nobody should ever appear in the contestant list.
-
-If you edit a game script and want to regenerate the patches, diff your project
-against a clean decompile with the node path fix applied.
-
-## rough edges
-
-- The lobby button is drawn over the menu by the mod rather than being a real
-  menu entry, so it doesn't match the game's own styling.
-- Extras integration is attempted at runtime because the purchased game's scene
-  is not stored here. The normal main-menu and online-screen buttons are the
-  reliable entry points if a future game build changes Extras.
-- The community installer supports ZIP archives only, has no update screen, and
-  restarts canceled downloads rather than resuming their partial files.
-- Windows 0.5.1, 0.5.2 dev-2, and 0.5.3. Anything else fails with a clear error
-  when it goes to patch it.
-- Everyone needs the same build. The mod checks and kicks you out with a message
-  if you don't, but it can't mix a 0.5.1 host with a 0.5.2 or 0.5.3 client.
-- Twitch modes are singleplayer, haven't touched them.
-- Pack differences only get checked against the clips actually picked.
-
-## credits
-
-The Choicer Voicer is by **YeahMaybe**. This is just an unofficial fan mod,
-nothing to do with them and not endorsed by them. All the game's code and assets
-stay their copyright and none of it is in here.
-
-My code (`mod/net/`, `install_mod.py`) is MIT, see [LICENSE](LICENSE). Built with
-[Godot](https://godotengine.org) and [gdRE](https://github.com/GDRETools/gdsdecomp).
+</div>

@@ -1,0 +1,33 @@
+--- a/common/globals/profile.gd
++++ b/common/globals/profile.gd
+@@ -196,7 +196,11 @@
+ @export var dub_mode_hard_mute_clips: bool: set = _set_dub_mode_hard_mute_clips
+ @export var dub_mode_hard_no_captions: bool: set = _set_dub_mode_hard_no_captions
+ @export var dub_mode_hard_one_take: bool: set = _set_dub_mode_hard_one_take
++@export var dub_mode_hear_recording_on_replay: bool = true: set = _set_dub_mode_hear_recording_on_replay
++@export var dub_mode_hear_recording_offset: bool: set = _set_dub_mode_hear_recording_offset
+ func _set_dub_mode_mute_backing_track(value: bool) -> void : dub_mode_mute_backing_track = value;changed_dub_mode_options.emit()
+ func _set_dub_mode_clip_order_index(value: int) -> void : dub_mode_clip_order_index = value;changed_dub_mode_options.emit()
+ func _set_dub_mode_hard_mute_clips(value: bool) -> void : dub_mode_hard_mute_clips = value;changed_dub_mode_options.emit()
+ func _set_dub_mode_hard_no_captions(value: bool) -> void : dub_mode_hard_no_captions = value;changed_dub_mode_options.emit()
+ func _set_dub_mode_hard_one_take(value: bool) -> void : dub_mode_hard_one_take = value;changed_dub_mode_options.emit()
++func _set_dub_mode_hear_recording_on_replay(value: bool) -> void : dub_mode_hear_recording_on_replay = value;changed_dub_mode_options.emit()
++func _set_dub_mode_hear_recording_offset(value: bool) -> void : dub_mode_hear_recording_offset = value;changed_dub_mode_options.emit()
+@@ -358,6 +362,8 @@
+ 	dub_mode_hard_mute_clips = type_convert(dubmode.get("hard_mute_clips", false), TYPE_BOOL)
+ 	dub_mode_hard_no_captions = type_convert(dubmode.get("hard_no_captions", false), TYPE_BOOL)
+ 	dub_mode_hard_one_take = type_convert(dubmode.get("hard_one_take", false), TYPE_BOOL)
++	dub_mode_hear_recording_on_replay = type_convert(dubmode.get("hear_recording_on_replay", true), TYPE_BOOL)
++	dub_mode_hear_recording_offset = type_convert(dubmode.get("hear_recording_offset", false), TYPE_BOOL)
+
+ 	var dubcinema: = _get_or_make_dict(settings, "dub_cinema")
+ 	dub_cinema_mute_audience = type_convert(dubcinema.get("mute_audience", false), TYPE_BOOL)
+@@ -514,6 +520,8 @@
+ 	output.settings.dub_mode.hard_mute_clips = dub_mode_hard_mute_clips
+ 	output.settings.dub_mode.hard_no_captions = dub_mode_hard_no_captions
+ 	output.settings.dub_mode.hard_one_take = dub_mode_hard_one_take
++	output.settings.dub_mode.hear_recording_on_replay = dub_mode_hear_recording_on_replay
++	output.settings.dub_mode.hear_recording_offset = dub_mode_hear_recording_offset
+
+ 	output.settings.dub_cinema.mute_audience = dub_cinema_mute_audience
+ 	output.settings.dub_cinema.start_fullscreened = dub_cinema_start_fullscreened

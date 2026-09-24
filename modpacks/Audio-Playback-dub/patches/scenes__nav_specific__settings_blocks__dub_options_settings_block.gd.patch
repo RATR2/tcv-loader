@@ -1,0 +1,43 @@
+--- a/scenes/nav_specific/settings_blocks/dub_options_settings_block.gd
++++ b/scenes/nav_specific/settings_blocks/dub_options_settings_block.gd
+@@ -8,6 +8,8 @@
+ @onready var chk_hard_no_captions: CheckButton = %ChkHardNoCaptions
+
+
++var chk_hear_recording: CheckButton
++var chk_hear_recording_offset: CheckButton
+
+
+ func change_to_freestyle_variant() -> void :
+@@ -20,6 +22,8 @@
+ 	chk_hard_one_take.toggled.connect(Profile._set_dub_mode_hard_one_take)
+ 	chk_hard_mute.toggled.connect(Profile._set_dub_mode_hard_mute_clips)
+ 	chk_hard_no_captions.toggled.connect(Profile._set_dub_mode_hard_no_captions)
++	chk_hear_recording.toggled.connect(Profile._set_dub_mode_hear_recording_on_replay)
++	chk_hear_recording_offset.toggled.connect(Profile._set_dub_mode_hear_recording_offset)
+ func _option_id_to_profile(_dummy: int) -> void :
+ 	Profile.dub_mode_clip_order_index = option_clip_order.get_selected_id()
+
+@@ -32,8 +36,22 @@
+ 	chk_hard_one_take.button_pressed = Profile.dub_mode_hard_one_take
+ 	chk_hard_mute.button_pressed = Profile.dub_mode_hard_mute_clips
+ 	chk_hard_no_captions.button_pressed = Profile.dub_mode_hard_no_captions
++	chk_hear_recording.button_pressed = Profile.dub_mode_hear_recording_on_replay
++	chk_hear_recording_offset.button_pressed = Profile.dub_mode_hear_recording_offset
+
+
+ func _ready() -> void :
++	_setup_hear_recording_checkboxes()
+ 	_initial_values_from_profile()
+ 	_connect_signals()
++
++
++func _setup_hear_recording_checkboxes() -> void :
++	chk_hear_recording = CheckButton.new()
++	chk_hear_recording.text = "Hear my recording when replaying a clip"
++	chk_hear_recording.tooltip_text = "When on, \"Hear clip again\" also plays your last take for this clip."
++	list.add_child(chk_hear_recording)
++	chk_hear_recording_offset = CheckButton.new()
++	chk_hear_recording_offset.text = "Offset my recording so I can hear both back to back"
++	chk_hear_recording_offset.tooltip_text = "Plays the original clip, then your recording, one after the other, instead of both at the same time."
++	list.add_child(chk_hear_recording_offset)

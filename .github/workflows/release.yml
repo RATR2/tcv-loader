@@ -1,0 +1,185 @@
+name: Release
+
+# Triggered by a "tags:" trailer in the HEAD commit of a push to main, with
+# "release" listed among the tags, e.g.:
+#
+#   Fix pack sync timeout
+#
+#   tags:
+#   release
+#
+# Only the newest commit of the push is checked (same convention as things
+# like "[skip ci]"), not every commit in it.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  check-trigger:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+    steps:
+      - name: 'Look for a "tags: release" trailer in the commit message'
+        id: check
+        env:
+          MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          python3 - <<'EOF'
+          import os
+
+          message = os.environ.get("MESSAGE", "")
+          in_tags = False
+          found = False
+          for line in message.splitlines():
+              stripped = line.strip()
+              if stripped.lower() == "tags:":
+                  in_tags = True
+                  continue
+              if in_tags:
+                  if not stripped:
+                      break
+                  if stripped.lower() == "release":
+                      found = True
+                      break
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"should_release={'true' if found else 'false'}\n")
+          EOF
+
+  prepare:
+    needs: check-trigger
+    if: needs.check-trigger.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      game_version: ${{ steps.version.outputs.game_version }}
+      release_number: ${{ steps.number.outputs.release_number }}
+      base_name: ${{ steps.name.outputs.base_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The highest entry in engine.SUPPORTED_VERSIONS, not hardcoded here,
+      # so this stays correct as new game versions get support added.
+      - name: Read the highest supported game version from engine.py
+        id: version
+        run: |
+          VERSION=$(python3 -c "
+          import re
+          text = open('loader/loader_core/engine.py').read()
+          match = re.search(r'SUPPORTED_VERSIONS\s*=\s*\[(.*?)\]', text)
+          versions = re.findall(r'([\d.]+)', match.group(1))
+          versions.sort(key=lambda v: [int(p) for p in v.split('.')])
+          print(versions[-1])
+          ")
+          echo "game_version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # Counts existing releases this workflow made (by tag prefix) and adds
+      # one, so it's "the Nth release", not tied to commit count or run
+      # number (which would have gaps from non-release pushes).
+      - name: Work out this release's incremental number
+        id: number
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          COUNT=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 --json tagName \
+            --jq '[.[] | select(.tagName | startswith("TCV_Loader-"))] | length')
+          echo "release_number=$((COUNT + 1))" >> "$GITHUB_OUTPUT"
+
+      - name: Compose the shared base name
+        id: name
+        run: |
+          echo "base_name=TCV_Loader-${{ steps.version.outputs.game_version }}-${{ steps.number.outputs.release_number }}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            venv_python: .venv/bin/python3
+          - os: windows-latest
+            platform: windows
+            venv_python: .venv/Scripts/python.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v10
+
+      - name: Build the venv for this platform
+        shell: bash
+        run: |
+          uv venv .venv
+          uv pip install -r requirements.txt --python "${{ matrix.venv_python }}"
+
+      # A uv-managed venv's interpreter is a symlink into uv's own Python
+      # cache: an absolute path on *this* runner (e.g.
+      # /home/runner/.local/share/uv/python/...), even with --relocatable,
+      # which only fixes the activation scripts, not this. Left alone, the
+      # zipped venv would ship a python3 that can't run at all once
+      # extracted on a machine that never had that exact uv cache path.
+      # python-build-standalone builds (what uv actually downloads) are
+      # relocatable by design, so bundling the whole runtime alongside the
+      # venv and re-pointing the symlink at it, relatively, makes the
+      # package self-contained. Windows venvs normally copy python.exe rather
+      # than symlink it (no elevated privileges needed that way), so this is
+      # a no-op there; the -L check is what makes that safe either way.
+      - name: Make the venv self-contained
+        shell: bash
+        run: |
+          INTERP="${{ matrix.venv_python }}"
+          if [ -L "$INTERP" ]; then
+            RUNTIME_BIN=$(readlink -f "$INTERP")
+            RUNTIME_ROOT=$(dirname "$(dirname "$RUNTIME_BIN")")
+            cp -r "$RUNTIME_ROOT" ./python-runtime
+            INTERP_NAME=$(basename "$RUNTIME_BIN")
+            INTERP_DIR=$(dirname "$INTERP")
+            rm "$INTERP"
+            ln -s "../../python-runtime/bin/$INTERP_NAME" "$INTERP"
+            if [ -L "$INTERP_DIR/python" ]; then
+              rm "$INTERP_DIR/python"
+              ln -s "$(basename "$INTERP")" "$INTERP_DIR/python"
+            fi
+          fi
+
+      # Just the app plus its now-self-contained .venv (and python-runtime/,
+      # if the previous step created one), not .cache/ (gdRE/Godot,
+      # fetched on first real install, not needed to launch the app), not
+      # dev/ (maintainer-only), not .git/install_logs/work/.
+      - name: Package the release zip
+        id: package
+        shell: bash
+        run: |
+          NAME="${{ needs.prepare.outputs.base_name }}-${{ matrix.platform }}"
+          mkdir "$NAME"
+          cp -r .venv loader modpacks run.sh run.bat requirements.txt README.md LICENSE "$NAME/"
+          [ -d python-runtime ] && cp -r python-runtime "$NAME/"
+          python3 -c "import shutil; shutil.make_archive('$NAME', 'zip', '.', '$NAME')"
+          echo "zip_name=$NAME.zip" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.zip_name }}
+          path: ${{ steps.package.outputs.zip_name }}
+
+  release:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ needs.prepare.outputs.base_name }}" artifacts/*.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "${{ needs.prepare.outputs.base_name }}" \
+            --notes "Automated release for game version ${{ needs.prepare.outputs.game_version }}."

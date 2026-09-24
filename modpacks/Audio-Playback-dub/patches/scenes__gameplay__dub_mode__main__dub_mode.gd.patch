@@ -1,0 +1,81 @@
+--- a/scenes/gameplay/dub_mode/main/dub_mode.gd
++++ b/scenes/gameplay/dub_mode/main/dub_mode.gd
+@@ -69,6 +69,42 @@
+ var resource: GameplayResourceDubMode
+
+
++# Hearing your own last take alongside the original when you press "Hear
++# clip again". Profile.dub_mode_hear_recording_on_replay (default on) and
++# .dub_mode_hear_recording_offset (default off; plays them back to back
++# instead of together) live in Options and Settings under Dub Mode, see
++# dub_options_settings_block.gd. This checkbox controls the exact same
++# Profile value rather than its own separate state, so either one flips
++# both, and _update_from_difficulty_toggles() (already re-run on every
++# Profile.changed_dub_mode_options, further down) keeps it in sync if the
++# Options screen changes it while this one is on screen.
++var chk_mic_playback: CheckBox
++
++
++func _setup_mic_playback_checkbox() -> void :
++	chk_mic_playback = CheckBox.new()
++	chk_mic_playback.text = "Mic Playback"
++	chk_mic_playback.tooltip_text = "When on, \"Hear clip again\" also plays your last take for this clip. See Options and Settings for together vs. back to back."
++	chk_mic_playback.button_pressed = Profile.dub_mode_hear_recording_on_replay
++	chk_mic_playback.toggled.connect(Profile._set_dub_mode_hear_recording_on_replay)
++	remote_buttons.add_child(chk_mic_playback)
++
++
++func _play_own_recording() -> void :
++	# member_audio on the current performance_array entry isn't filled in
++	# until _button_next() runs, so for the clip you're actively on it's
++	# still null. MicrophoneService.get_recording() is the same non-
++	# destructive call _button_next() itself uses to grab the just-finished
++	# take, so it's safe to call here too without disturbing that later read.
++	if not (MicrophoneService is Node): return
++	var recording: AudioStreamWAV = MicrophoneService.get_recording()
++	if recording == null or recording.data.is_empty(): return
++	var player: AudioStreamPlayer = AudioStreamPlayer.new()
++	player.bus = "Pecho"
++	player.stream = recording
++	player.finished.connect(player.queue_free)
++	add_child(player)
++	player.play()
++
++
+ var performance_array: Array[OmniClipMemberInstance]
+ var unperformance_array: Array[OmniClipMemberInstance]
+
+@@ -99,6 +135,7 @@
+ 	AudioServer.set_bus_mute(VolumeService.BUS_PLAYBACK, Profile.dub_mode_hard_mute_clips)
+ 	lbl_caption.visible = ( !Profile.dub_mode_hard_no_captions and !performing_finished)
+ 	if !performing_finished: btn_record.enable( !Profile.dub_mode_hard_one_take or !bool(turn_record_attempts))
+ 	player_backing_track.volume_linear = float( !Profile.dub_mode_mute_backing_track) * float(performing_finished)
++	if is_instance_valid(chk_mic_playback): chk_mic_playback.button_pressed = Profile.dub_mode_hear_recording_on_replay
+
+
+ func reset_microphone() -> void :
+@@ -157,7 +194,10 @@
+ 	if !audio_interface_manager.idled.is_connected(_end_again): audio_interface_manager.idled.connect(_end_again)
+ 	previous_buttons_state = _current_button_states();_buttons_disable_all()
+ 	audio_interface_manager.again()
++	if Profile.dub_mode_hear_recording_on_replay and not Profile.dub_mode_hear_recording_offset: _play_own_recording()
+ 	btn_stop_listening.show();btn_hear_again.hide()
+ func _end_again() -> void :
+ 	_update_from_difficulty_toggles()
+ 	if audio_interface_manager.idled.is_connected(_end_again): audio_interface_manager.idled.disconnect(_end_again)
+ 	audio_interface_manager.idle()
+ 	_buttons_toggle_array(previous_buttons_state)
+ 	btn_stop_listening.hide();btn_hear_again.show()
+ 	audio_interface_manager.reset_playbar()
++	if Profile.dub_mode_hear_recording_on_replay and Profile.dub_mode_hear_recording_offset: _play_own_recording()
+ func _enact() -> void :
+ 	if !audio_interface_manager.idled.is_connected(_end_enact): audio_interface_manager.idled.connect(_end_enact)
+ 	previous_buttons_state = _current_button_states();_buttons_disable_all()
+@@ -254,6 +294,7 @@
+ 	resource = Metro.gameplay_resource_dub_mode
+ 	_connect_signals()
+ 	_setup_performance_array()
++	_setup_mic_playback_checkbox()
+ 	_enable_buttons()
+ 	_update_from_difficulty_toggles()
+ 	btn_begin.show();vclip_displayer.show();hide_settings()

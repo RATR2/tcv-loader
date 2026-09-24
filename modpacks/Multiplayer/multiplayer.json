@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "name": "TCV-Multiplayer",
+    "author": "TypeOneAppolo",
+    "link1": "https://github.com/TypeOneAppolo/tcv-multiplayer-mod",
+    "link2": "https://ko-fi.com/appolodev",
+    "link3": "",
+    "modloader": "old",
+    "id": "Multiplayer",
+    "description": "this mod was made before the modloader was created.",
+    "version": "1.1.9",
+    "image": "",
+    "game_version": ["0_5_3","0_5_2","0_5_1"]
+  },
+  "version_patches": {
+    "v0_5_3/scenes__gameplay__dub_mode__main__dub_mode.gd.patch": "0_5_3",
+    "v0_5_2/scenes__gameplay__dub_mode__main__dub_mode.gd.patch": "0_5_2",
+    "v0_5_1/scenes__gameplay__dub_mode__main__dub_mode.gd.patch": "0_5_1"
+  },
+  "common_patches": [
+    "scene__dialogue__dialogue_master.gd.patch",
+    "scene__match__match_master_base.gd.patch",
+    "scene__match__match_master.gd.patch",
+    "scene__singleton__world.gd.patch",
+    "scenes__nav_specific__clip_selector_menus__clip_selection_dub.gd.patch",
+    "scenes__nav_specific__clip_selector_menus__clip_selection_standard.gd.patch"
+  ],
+  "injected_code": [
+    "net/*"
+  ]
+}

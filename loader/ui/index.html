@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TCV Modloader</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M12 2 4 6v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10V6l-8-4Z"
+              fill="currentColor" fill-opacity="0.18" stroke="currentColor" stroke-width="1.4"/>
+        <path d="M9 12.5 11 14.5 15.5 10" stroke="currentColor" stroke-width="1.6"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div>
+        <h1>TCV Modloader</h1>
+        <p class="tagline">Build a modded copy of The Choicer Voicer from your own game files</p>
+      </div>
+    </div>
+    <span id="status"></span>
+  </header>
+
+  <main>
+    <section class="panel" aria-label="Installed modpacks">
+      <div class="panel-heading">
+        <h2>Modpacks</h2>
+        <span class="panel-hint">Toggle what's enabled and drag the order with the arrows</span>
+      </div>
+      <div id="modpack-list"></div>
+    </section>
+
+    <section class="panel" id="install-panel" aria-label="Install">
+      <div class="panel-heading">
+        <h2>Build</h2>
+      </div>
+
+      <div class="exe-row">
+        <button id="browse-exe" class="btn">Choose game exe&hellip;</button>
+        <button id="detect-exe" class="btn btn-ghost">Detect automatically</button>
+        <span id="exe-path" class="exe-path">No game selected</span>
+      </div>
+      <div id="detect-results" class="detect-results" hidden></div>
+
+      <div id="progress" class="progress" hidden>
+        <div class="spinner" aria-hidden="true"></div>
+        <span id="progress-phase">Working&hellip;</span>
+      </div>
+      <div id="result-banner" class="result-banner" hidden></div>
+      <details id="log-details">
+        <summary>Build log</summary>
+        <div id="progress-log" aria-live="polite"></div>
+      </details>
+    </section>
+  </main>
+
+  <footer>
+    <label class="version-picker">
+      Game version
+      <select id="game-version">
+        <option value="0_5_3">0.5.3</option>
+        <option value="0_5_2">0.5.2</option>
+        <option value="0_5_1">0.5.1</option>
+      </select>
+    </label>
+    <button id="check-conflicts" class="btn btn-ghost">Check for conflicts</button>
+    <button id="install" class="btn btn-primary" disabled>Install &amp; Launch</button>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

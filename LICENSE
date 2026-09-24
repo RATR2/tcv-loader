@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 TypeOneAppolo
+Copyright (c) 2026 R4T2
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,12 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-This licence covers only the mod's own work: mod/net/, install_mod.py, and the
-added lines in mod/patches/.
-
-The Choicer Voicer is copyright YeahMaybe. This repository contains no game
-code, assets or executables, and this mod is not affiliated with or endorsed by
-the developer.

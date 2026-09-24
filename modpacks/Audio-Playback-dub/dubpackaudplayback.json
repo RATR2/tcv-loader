@@ -1,0 +1,20 @@
+{
+  "meta": {
+    "name": "DubPack Playback",
+    "id": "dubpackaudplayback",
+    "author": "R4T_2",
+    "link1": "",
+    "link2": "",
+    "link3": "",
+    "modloader": "new",
+    "description": "Hear your own last take alongside the original when you press Hear clip again. On by default, toggle it off in Options and Settings under Dub Mode.",
+    "version": "1.0.2",
+    "image": "",
+    "game_version": ["0_5_3"]
+  },
+  "patches": [
+    "scenes__gameplay__dub_mode__main__dub_mode.gd.patch",
+    "common__globals__profile.gd.patch",
+    "scenes__nav_specific__settings_blocks__dub_options_settings_block.gd.patch"
+  ]
+}

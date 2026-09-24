@@ -12,10 +12,33 @@ work/
 .import/
 export_presets.cfg.user
 
-# Python
-__pycache__/
-*.pyc
-
 # Logs
 *.log
-install_logs/
+
+# Game files for dev purpose
+*TheChoicerVoicer*
+
+# Python compilation & bytecode caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Distribution / packaging build caches
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Testing & linting caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.cache/
+
+# Pip installation download cache (if kept inside project)
+.pip-cache/
+
+# Dev foldering
+/dev/*

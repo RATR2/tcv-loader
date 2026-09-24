@@ -1,0 +1,175 @@
+extends Node
+# dev tool, not shipped. run two copies with -- host and -- client.
+
+# host takes Tuco, client takes Heisenberg. the untagged clip and the one for a
+# character nobody picked are dealt out in turn, so they land on 0 then 1.
+var CLIP_CHARACTERS: Array = [
+	PackedStringArray(["Tuco"]),
+	PackedStringArray(["Heisenberg"]),
+	PackedStringArray(["Tuco"]),
+	PackedStringArray([]),
+	PackedStringArray(["Nobody"]),
+]
+var EXPECTED_OWNERS: PackedInt32Array = PackedInt32Array([0, 1, 0, 0, 1])
+
+func _ready() -> void:
+	var args: PackedStringArray = OS.get_cmdline_user_args()
+	if args.is_empty(): return
+	_check_handshake_ordering()
+	match args[0]:
+		"host": _run_host()
+		"client": _run_client()
+
+
+# The one invariant everything rests on: Godot addresses an rpc by index in the name-sorted list, so the handshake survives version drift only while it holds calls 0 and 1.
+func _check_handshake_ordering() -> void:
+	var names: Array[String] = []
+	for m: Dictionary in Net.get_method_list():
+		var n: String = str(m.get("name", ""))
+		if n.begins_with("_HANDSHAKE") or n.begins_with("_rpc_"):
+			if not names.has(n): names.append(n)
+	names.sort()
+	if names.size() > 1 and names[0] == "_HANDSHAKE" and names[1] == "_HANDSHAKE_REPLY":
+		print("NETTEST PASS | handshake still holds calls 0 and 1")
+	else:
+		print("NETTEST FAIL | handshake is no longer first, rpc order starts %s" % str(names.slice(0, 3)))
+
+
+# Takes go over the wire compressed, falling back to raw if that doesn't shrink; the two
+# submissions below exercise one path each (near silence compresses, noise doesn't).
+func _fake_take(compressible: bool = true) -> AudioStreamWAV:
+	var w: = AudioStreamWAV.new()
+	w.format = AudioStreamWAV.FORMAT_16_BITS
+	w.mix_rate = 44100
+	w.stereo = false
+	var data: = PackedByteArray()
+	data.resize(120000)
+	if compressible:
+		for i: int in range(0, data.size(), 997): data[i] = 42
+	else:
+		var rng: = RandomNumberGenerator.new()
+		rng.seed = 1234
+		for i: int in data.size(): data[i] = rng.randi() & 0xff
+	w.data = data
+	return w
+
+
+func _run_host() -> void:
+	print("NETTEST | hosting...")
+	var err: Error = Net.host_game("Hosty", "packA")
+	print("NETTEST | host_game err=%d" % err)
+
+	await get_tree().create_timer(4.0).timeout
+	print("NETTEST | roster=%d slots=%s" % [Net.players.size(), str(Net.slot_map)])
+	if Net.manifests.size() == Net.players.size(): print("NETTEST PASS | host has a pack summary per player")
+	else: print("NETTEST FAIL | host has %d summaries for %d players" % [Net.manifests.size(), Net.players.size()])
+
+	var take: AudioStreamWAV = _fake_take()
+	print("NETTEST | submitting %d bytes for slot 0" % take.data.size())
+	await Net.submit_performance(0, {"max": PackedByteArray([1, 2, 3])}, take)
+	print("NETTEST | host submit complete")
+
+	await Net.barrier("t1")
+	print("NETTEST | host cleared barrier")
+
+	Net.publish_scores(PackedInt32Array([4, 2]))
+	print("NETTEST | host published scores")
+
+	await get_tree().create_timer(2.0).timeout
+	Net.end_session()
+	await get_tree().create_timer(1.0).timeout
+	Net.begin_session()
+	Net._rpc_start_match.rpc(Net.session_id, PackedStringArray())
+	print("NETTEST | host began session %d" % Net.session_id)
+
+	await get_tree().create_timer(2.0).timeout
+	var take2: AudioStreamWAV = _fake_take(false)
+	take2.data = take2.data.slice(0, 60000)
+	print("NETTEST | submitting %d bytes for slot 0 (session 2)" % take2.data.size())
+	await Net.submit_performance(0, {"max": PackedByteArray([9])}, take2)
+
+	await Net.barrier("t1")
+	print("NETTEST | host cleared barrier again")
+
+	Net.set_my_dub_characters(PackedStringArray(["Tuco"]))
+	await get_tree().create_timer(2.5).timeout
+	var owners: PackedInt32Array = Net.resolve_dub_owners(CLIP_CHARACTERS)
+	print("NETTEST | roles=%s owners=%s" % [str(Net.dub_roles), str(owners)])
+	if owners == EXPECTED_OWNERS: print("NETTEST PASS | host resolved the cast")
+	else: print("NETTEST FAIL | host resolved %s, wanted %s" % [str(owners), str(EXPECTED_OWNERS)])
+	Net.broadcast_dub_begin(owners)
+
+	# Pressing watch must not start anything until everyone's on the results screen; the
+	# client below deliberately takes its time getting there, like a slow machine scoring clips.
+	var watched: Array = []
+	Net.dub_watch.connect(func(playing: bool) -> void: watched.append(playing))
+	Net.report_dub_finished()
+	Net.request_dub_watch(true)
+	await get_tree().create_timer(1.5).timeout
+	if watched.is_empty(): print("NETTEST PASS | host held the watch back, someone was still scoring")
+	else: print("NETTEST FAIL | host started the watch on its own: %s" % str(watched))
+
+	await get_tree().create_timer(3.5).timeout
+	if watched == [true]: print("NETTEST PASS | the watch went out once everyone was ready")
+	else: print("NETTEST FAIL | host watch signals were %s, wanted [true]" % str(watched))
+
+	await get_tree().create_timer(2.0).timeout
+	print("NETTEST | HOST DONE")
+	get_tree().quit()
+
+
+func _run_client() -> void:
+	await get_tree().create_timer(1.5).timeout
+	print("NETTEST | joining...")
+	var err: Error = Net.join_game("127.0.0.1", "Clienty", "packB")
+	print("NETTEST | join_game err=%d" % err)
+
+	await get_tree().create_timer(3.5).timeout
+	print("NETTEST | roster=%d slots=%s myslot=%d" % [Net.players.size(), str(Net.slot_map), Net.my_slot()])
+	if Net.manifests.has(1): print("NETTEST PASS | client has the host's pack summary")
+	else: print("NETTEST FAIL | client never got the host's pack summary")
+
+	var perf: Dictionary = await Net.await_performance(0)
+	var got: int = perf["wav"].data.size() if perf.has("wav") else -1
+	print("NETTEST | client received take: %d bytes, plmic=%s" % [got, str(perf.get("plmic", {}))])
+	if got == 120000: print("NETTEST PASS | compressed take came back the size it went in")
+	else: print("NETTEST FAIL | compressed take came back as %d bytes, wanted 120000" % got)
+
+	await Net.barrier("t1")
+	print("NETTEST | client cleared barrier")
+
+	var scores: PackedInt32Array = await Net.await_scores()
+	print("NETTEST | client received scores=%s" % str(scores))
+
+	var first_session: int = Net.session_id
+	while Net.session_id == first_session: await get_tree().process_frame
+	print("NETTEST | client entered session %d" % Net.session_id)
+
+	var perf2: Dictionary = await Net.await_performance(0)
+	var got2: int = perf2["wav"].data.size() if perf2.has("wav") else -1
+	print("NETTEST | client received take: %d bytes, plmic=%s" % [got2, str(perf2.get("plmic", {}))])
+	if got2 == 60000: print("NETTEST PASS | second session take is the new one, sent uncompressed")
+	else: print("NETTEST FAIL | second session returned %d bytes (stale inbox)" % got2)
+
+	await Net.barrier("t1")
+	print("NETTEST | client cleared barrier again")
+
+	Net.set_my_dub_characters(PackedStringArray(["Heisenberg"]))
+	await Net.dub_begin
+	print("NETTEST | client roles=%s owners=%s" % [str(Net.dub_roles), str(Net.dub_clip_owners)])
+	if Net.dub_clip_owners == EXPECTED_OWNERS: print("NETTEST PASS | client agrees on the cast")
+	else: print("NETTEST FAIL | client got %s, wanted %s" % [str(Net.dub_clip_owners), str(EXPECTED_OWNERS)])
+
+	var watched: Array = []
+	Net.dub_watch.connect(func(playing: bool) -> void: watched.append(playing))
+	# slow off the mark on purpose. the host presses Watch well before this.
+	await get_tree().create_timer(3.0).timeout
+	if not watched.is_empty(): print("NETTEST FAIL | client was watching before it said it was ready")
+	Net.report_dub_finished()
+
+	await get_tree().create_timer(2.5).timeout
+	if watched == [true]: print("NETTEST PASS | client was told to watch")
+	else: print("NETTEST FAIL | client watch signals were %s, wanted [true]" % str(watched))
+
+	print("NETTEST | CLIENT DONE")
+	get_tree().quit()

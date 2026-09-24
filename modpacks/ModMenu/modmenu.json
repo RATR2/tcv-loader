@@ -1,0 +1,19 @@
+{
+  "meta": {
+    "name": "Mod Menu",
+    "id": "ModMenu",
+    "author": "R4T_2",
+    "link1": "",
+    "link2": "",
+    "link3": "",
+    "modloader": "new",
+    "description": "Adds a MODS button so you can see which mods are loaded in this build, with each one's version, author and description.",
+    "version": "1.0.0",
+    "image": "",
+    "forced": true,
+    "game_version": ["0_5_1", "0_5_2", "0_5_3"]
+  },
+  "injected_code": [
+    "modmenu/*"
+  ]
+}
